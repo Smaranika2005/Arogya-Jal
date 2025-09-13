@@ -15,6 +15,7 @@ import {
   BarChart3
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import DatabaseTest from "@/components/DatabaseTest";
 
 const ASHADashboard = () => {
   const navigate = useNavigate();
@@ -214,8 +215,13 @@ const ASHADashboard = () => {
           </Card>
         </div>
 
+        {/* Database Connection Test */}
+        <div className="mt-12">
+          <DatabaseTest />
+        </div>
+
         {/* Quick Info */}
-        <div className="mt-12 text-center">
+        <div className="mt-8 text-center">
           <Card className="health-card border-0 max-w-2xl mx-auto">
             <CardContent className="p-8">
               <div className="flex items-center justify-center mb-4">
