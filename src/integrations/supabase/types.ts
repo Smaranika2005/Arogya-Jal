@@ -14,13 +14,80 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          role: string
+        }
+        Insert: {
+          created_at?: string | null
+          id: string
+          name: string
+          role: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          role?: string
+        }
+        Relationships: []
+      }
+      surveys: {
+        Row: {
+          asha_worker_id: string | null
+          created_at: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          survey_data: Json
+          symptoms: string[] | null
+          water_quality: string | null
+        }
+        Insert: {
+          asha_worker_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          survey_data: Json
+          symptoms?: string[] | null
+          water_quality?: string | null
+        }
+        Update: {
+          asha_worker_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          survey_data?: Json
+          symptoms?: string[] | null
+          water_quality?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "surveys_asha_worker_id_fkey"
+            columns: ["asha_worker_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_role: {
+        Args: { user_id?: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
