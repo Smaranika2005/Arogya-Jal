@@ -10,122 +10,17 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.4"
+    PostgrestVersion: "13.0.5"
   }
   public: {
     Tables: {
-      notifications: {
-        Row: {
-          created_at: string | null
-          id: string
-          is_read: boolean | null
-          message: string | null
-          order_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          id?: string
-          is_read?: boolean | null
-          message?: string | null
-          order_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          id?: string
-          is_read?: boolean | null
-          message?: string | null
-          order_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_order_id_fkey"
-            columns: ["order_id"]
-            isOneToOne: false
-            referencedRelation: "orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      orders: {
-        Row: {
-          bottle_type: string
-          created_at: string | null
-          delivery_address: string
-          id: string
-          phone: string
-          quantity: number
-          status: string | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          bottle_type: string
-          created_at?: string | null
-          delivery_address: string
-          id?: string
-          phone: string
-          quantity: number
-          status?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          bottle_type?: string
-          created_at?: string | null
-          delivery_address?: string
-          id?: string
-          phone?: string
-          quantity?: number
-          status?: string | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "orders_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      profiles: {
-        Row: {
-          address: string | null
-          created_at: string | null
-          id: string
-          name: string
-          phone: string | null
-          role: string | null
-        }
-        Insert: {
-          address?: string | null
-          created_at?: string | null
-          id: string
-          name: string
-          phone?: string | null
-          role?: string | null
-        }
-        Update: {
-          address?: string | null
-          created_at?: string | null
-          id?: string
-          name?: string
-          phone?: string | null
-          role?: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      get_user_role: {
-        Args: { user_id: string }
-        Returns: string
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never
