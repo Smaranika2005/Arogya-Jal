@@ -35,7 +35,14 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 }
 
 export async function fetchMunicipalities(): Promise<Municipality[]> {
-  return apiFetch('/municipalities');
+  const { data, error } = await supabase
+    .from('municipalities')
+    .select('municipality_id, municipality_name');
+  if (error) throw error;
+  return (data || []).map((m: any) => ({
+    id: Number(m.municipality_id),
+    name: m.municipality_name || '',
+  }));
 }
 
 export async function fetchWards(municipalityId: number): Promise<Ward[]> {

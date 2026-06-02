@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchMunicipalities } from "@/services/arogya-api";
+// fetchMunicipalities queried from Supabase directly
 
 type MunicipalityOption = {
   id: number;
@@ -83,8 +83,18 @@ const ASHASurvey = () => {
     const loadMunicipalities = async () => {
       if (!currentUser) return;
       try {
-        const data = await fetchMunicipalities();
-        setMunicipalities(data);
+        const { data, error } = await supabase
+          .from("municipalities")
+          .select("municipality_id, municipality_name");
+        
+        if (error) throw error;
+        
+        const mappedData = (data || []).map((m: any) => ({
+          id: Number(m.municipality_id),
+          name: m.municipality_name || "",
+        }));
+        
+        setMunicipalities(mappedData);
       } catch (error: any) {
         toast({ title: "Unable to load municipalities", description: error.message, variant: "destructive" });
       }
