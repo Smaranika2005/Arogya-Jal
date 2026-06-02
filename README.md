@@ -1,73 +1,102 @@
-# Welcome to your Lovable project
+# Arogya Jal — Water Quality Monitoring Platform
 
-## Project info
+IoT-enabled water quality monitoring from booth to municipality. ESP32 pH sensors feed the backend automatically; ASHA workers enter TDS and turbidity; WQI and hierarchical scores are computed server-side.
 
-**URL**: https://lovable.dev/projects/78968ac5-cde3-4013-b693-d2ac0c9d5773
+## Architecture
 
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/78968ac5-cde3-4013-b693-d2ac0c9d5773) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+Municipality → Ward → Booth → Water Bodies → Sensors → Sensor Readings
+                                                      ↓
+                                              water_body_summary (scheduled job)
+                                                      ↓
+ASHA Form (TDS + Turbidity) → water_quality_reports → WQI
+                                                      ↓
+                              booth_reports → ward_reports → municipality_reports
 ```
 
-**Edit a file directly in GitHub**
+## Quick Start
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 1. Database (Supabase SQL Editor)
 
-**Use GitHub Codespaces**
+Run in order:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. `supabase/migrations/001_arogya_jal_schema.sql`
+2. `supabase/migrations/002_migrate_legacy_data.sql` *(only when upgrading existing DB)*
+3. `supabase/migrations/003_seed_demo.sql`
 
-## What technologies are used for this project?
+### 2. Environment
 
-This project is built with:
+Copy `.env.example` to `.env` and set:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (backend only)
+- `VITE_API_URL=http://localhost:8788/api`
 
-## How can I deploy this project?
+### 3. Run
 
-Simply open [Lovable](https://lovable.dev/projects/78968ac5-cde3-4013-b693-d2ac0c9d5773) and click on Share -> Publish.
+```bash
+npm install
+npm run dev:all    # frontend :8080 + API :8788
+```
 
-## Can I connect a custom domain to my Lovable project?
+Or separately:
 
-Yes, you can!
+```bash
+npm run api        # Backend REST API
+npm run dev        # Vite frontend
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## Backend (`server/`)
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Clean architecture layout:
+
+| Layer | Path |
+|-------|------|
+| Entities | `server/domain/entities/` |
+| DTOs / Validation | `server/dto/validation.mjs` |
+| Repositories | `server/repositories/` |
+| Services | `server/services/` |
+| Controllers | `server/controllers/` |
+| Routes | `server/routes/api.mjs` |
+| Scheduled Jobs | `server/jobs/summary-updater.mjs` |
+
+API docs: [`server/docs/API.md`](server/docs/API.md)
+
+### ESP32 Ingestion
+
+```bash
+POST /api/iot/readings
+{
+  "sensorCode": "PH001",
+  "rawAdcValue": 1050,
+  "voltage": 0.85,
+  "phValue": 7.2,
+  "timestamp": "2026-06-01T10:00:00"
+}
+```
+
+## Frontend Routes
+
+| Route | Role | Purpose |
+|-------|------|---------|
+| `/asha/water-quality` | ASHA worker | Booth water quality form |
+| `/gov/dashboard` | Government | Municipality dashboard |
+| `/public/dashboard` | Public user | Municipality-scoped view |
+
+## Roles
+
+- `asha_worker` — submit water quality reports
+- `government` — full dashboard access
+- `public_user` — municipality-scoped dashboard
+
+## WQI (backend-only)
+
+Uses **30-day average pH** from `water_body_summary`, not latest reading.
+
+`WQI = phScore×0.4 + tdsScore×0.3 + turbidityScore×0.3`
+
+Booth score uses descending priority weights (3, 2, 1 for 3 water bodies).
+
+## Future Sensors
+
+Register new sensors in `sensors` table (`TDS`, `TURBIDITY`, `TEMPERATURE`, `DISSOLVED_OXYGEN`). All values store in `sensor_readings.sensor_value` — no schema changes required.

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Heart, Activity, Shield, Users, TrendingUp, MapPin, CheckCircle, ArrowRight, Database, BarChart3 } from "lucide-react";
+import { Heart, Activity, Shield, Users, TrendingUp, MapPin, CheckCircle, ArrowRight, Database, BarChart3, Globe } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -54,20 +54,20 @@ const Landing = () => {
                   <Heart className="w-12 h-12 text-primary mr-4" />
                 </div>
                 <h1 className="text-5xl md:text-6xl font-bold">
-                  <span className="text-gradient-primary">Smart Community</span>
+                  <span className="text-gradient-primary">AROGYA JAL</span>
                 </h1>
               </div>
               <h2 className="text-3xl md:text-4xl font-semibold text-secondary mb-4">
-                Health Monitoring & Early Warning System
+                Water Quality Monitoring Platform
               </h2>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-                Empowering ASHA workers and government officials with real-time health data collection, 
-                monitoring, and early warning capabilities for better community health outcomes.
+                IoT pH sensing, ASHA field data collection, and automated WQI scoring
+                from booth to municipality — built for scalable public health monitoring.
               </p>
             </div>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-16">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-6 justify-center items-center mb-16">
               <Button
                 size="lg"
                 className="bg-primary hover:bg-primary-dark text-primary-foreground px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg hover:shadow-xl"
@@ -86,11 +86,21 @@ const Landing = () => {
                 <Shield className="w-5 h-5 mr-2" />
                 Login as Government Official
               </Button>
+
+              <Button
+                size="lg"
+                variant="outline"
+                className="border-2 border-accent text-accent hover:bg-accent hover:text-accent-foreground px-8 py-4 text-lg font-semibold rounded-xl transition-all duration-300 hover:scale-105"
+                onClick={() => navigate("/public/login")}
+              >
+                <Globe className="w-5 h-5 mr-2" />
+                Login as Public User
+              </Button>
             </div>
 
             {/* Sign Up Link */}
             <div className="text-center">
-              <p className="text-muted-foreground mb-4">New ASHA Worker?</p>
+              <p className="text-muted-foreground mb-4">New User?</p>
               <Button
                 variant="ghost"
                 className="text-accent hover:text-accent-foreground hover:bg-accent/10 text-lg font-medium"

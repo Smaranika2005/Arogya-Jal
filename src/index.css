@@ -154,6 +154,16 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
+  /* Hide number input spinners across browsers */
+  .no-spinner::-webkit-outer-spin-button,
+  .no-spinner::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .no-spinner {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: textfield;
+  }
 }
 
 @keyframes pulse-health {

@@ -4,15 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Heart, ArrowLeft, User, Phone, Lock } from "lucide-react";
+import { Heart, ArrowLeft, User, Lock, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 const ASHASignup = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+
   const [formData, setFormData] = useState({
     name: "",
-    phone: "",
+    email: "",
+    role: "asha_worker",
+    municipality: "",
     password: "",
     confirmPassword: "",
   });
@@ -22,7 +26,6 @@ const ASHASignup = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Validation
     if (formData.password !== formData.confirmPassword) {
       toast({
         title: "Password Mismatch",
@@ -43,53 +46,91 @@ const ASHASignup = () => {
       return;
     }
 
-    // Check if phone number already exists
-    const existingWorkers = JSON.parse(localStorage.getItem("ashaWorkers") || "[]");
-    const phoneExists = existingWorkers.some((worker: any) => worker.phone === formData.phone);
-
-    if (phoneExists) {
+    if (formData.role === "public_user" && !formData.municipality.trim()) {
       toast({
-        title: "Phone Number Already Registered",
-        description: "This phone number is already registered. Please use a different number or sign in.",
+        title: "Missing Municipality",
+        description: "Public users must enter their municipality.",
         variant: "destructive",
       });
       setIsLoading(false);
       return;
     }
 
-    // Create new worker
-    const newWorker = {
-      id: Date.now().toString(),
-      name: formData.name,
-      phone: formData.phone,
-      password: formData.password,
-      registeredAt: new Date().toISOString(),
-    };
+    try {
+      // ✅ Sign up with email + password
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          // Pass metadata so DB trigger can seed profile with real name/role
+          data: {
+            name: formData.name,
+            role: formData.role,
+            municipality: formData.role === "public_user" ? formData.municipality : null,
+          },
+        },
+      });
 
-    // Save to localStorage
-    const updatedWorkers = [...existingWorkers, newWorker];
-    localStorage.setItem("ashaWorkers", JSON.stringify(updatedWorkers));
+      if (authError) throw authError;
 
-    // Auto login after signup
-    localStorage.setItem("currentUser", JSON.stringify({
-      ...newWorker,
-      role: "asha",
-      loginTime: new Date().toISOString(),
-    }));
+      const userId = authData.user?.id;
+      if (!userId) throw new Error("User ID not returned from Supabase.");
 
-    toast({
-      title: "Registration Successful!",
-      description: `Welcome ${formData.name}! Your account has been created.`,
-    });
+      // ✅ Create or update the profile row when we have an authenticated session.
+      // This keeps registration resilient even if the database trigger is missing.
+      if (authData.session) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({
+            id: userId,
+            name: formData.name,
+            role: formData.role,
+            municipality: formData.role === "public_user" ? formData.municipality : null,
+          }, { onConflict: "id" });
 
-    navigate("/asha/dashboard");
-    setIsLoading(false);
+        if (profileError) throw profileError;
+      }
+
+      // Session is persisted by Supabase; no localStorage needed
+
+      toast({
+        title: "Signup Successful 🎉",
+        description: "Account created successfully. Welcome to Arogya Jal!",
+      });
+
+      if (formData.role === "asha_worker") {
+        navigate("/asha/dashboard");
+      } else if (formData.role === "government") {
+        navigate("/gov/dashboard");
+      } else if (formData.role === "public_user") {
+        navigate("/public/dashboard");
+      } else {
+        navigate("/");
+      }
+    } catch (err: any) {
+      console.error("Signup Error:", err);
+      toast({
+        title: "Signup Failed",
+        description: err.message || "Something went wrong while signing up.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [e.target.name]: e.target.value,
+    }));
+  };
+
+  const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData((prev) => ({
+      ...prev,
+      role: e.target.value,
+      municipality: e.target.value === "public_user" ? prev.municipality : "",
     }));
   };
 
@@ -106,12 +147,12 @@ const ASHASignup = () => {
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Home
           </Button>
-          
+
           <div className="flex items-center justify-center mb-4">
             <Heart className="w-8 h-8 text-primary mr-2 heartbeat" />
-            <h1 className="text-2xl font-bold text-primary">ASHA Worker Registration</h1>
+            <h1 className="text-2xl font-bold text-primary">User Registration</h1>
           </div>
-          <p className="text-muted-foreground">Create your health monitoring account</p>
+          <p className="text-muted-foreground">Create your Arogya Jal account</p>
         </div>
 
         {/* Signup Form */}
@@ -124,10 +165,9 @@ const ASHASignup = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Name */}
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium">
-                  Full Name
-                </Label>
+                <Label htmlFor="name">Full Name</Label>
                 <div className="relative">
                   <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -143,18 +183,17 @@ const ASHASignup = () => {
                 </div>
               </div>
 
+              {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-sm font-medium">
-                  Phone Number
-                </Label>
+                <Label htmlFor="email">Email</Label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    placeholder="Enter your phone number"
-                    value={formData.phone}
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="Enter your email"
+                    value={formData.email}
                     onChange={handleChange}
                     className="pl-10"
                     required
@@ -162,17 +201,50 @@ const ASHASignup = () => {
                 </div>
               </div>
 
+              {/* Role */}
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium">
-                  Password
-                </Label>
+                <Label htmlFor="role">Role</Label>
+                <select
+                  id="role"
+                  name="role"
+                  value={formData.role}
+                  onChange={handleRoleChange}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="asha_worker">ASHA Worker</option>
+                  <option value="government">Government Official</option>
+                  <option value="public_user">Public User</option>
+                </select>
+              </div>
+
+              {formData.role === "public_user" && (
+                <div className="space-y-2">
+                  <Label htmlFor="municipality">Municipality</Label>
+                  <div className="relative">
+                    <Input
+                      id="municipality"
+                      name="municipality"
+                      type="text"
+                      placeholder="Enter your municipality"
+                      value={formData.municipality}
+                      onChange={handleChange}
+                      className="pl-4"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Password */}
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
                     id="password"
                     name="password"
                     type="password"
-                    placeholder="Create a password (min 6 characters)"
+                    placeholder="Create a password"
                     value={formData.password}
                     onChange={handleChange}
                     className="pl-10"
@@ -181,10 +253,9 @@ const ASHASignup = () => {
                 </div>
               </div>
 
+              {/* Confirm Password */}
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-sm font-medium">
-                  Confirm Password
-                </Label>
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -200,27 +271,10 @@ const ASHASignup = () => {
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full bg-primary hover:bg-primary-dark text-primary-foreground py-3 rounded-lg font-semibold transition-all duration-300 hover:scale-105"
-                disabled={isLoading}
-              >
+              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Already have an account?{" "}
-                <Button
-                  variant="link"
-                  className="p-0 text-primary font-medium"
-                  onClick={() => navigate("/asha/login")}
-                >
-                  Sign in here
-                </Button>
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>

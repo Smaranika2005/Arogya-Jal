@@ -14,50 +14,45 @@ import {
   Activity,
   TrendingUp
 } from "lucide-react";
+import { getMySurveys } from "@/services/surveys";
+import { supabase } from "@/lib/supabase";
 
-interface Survey {
+interface SurveyRow {
   id: string;
-  ashaWorkerId: string;
-  ashaWorkerName: string;
-  surveyDate: string;
-  boothNumber: string;
-  symptoms: string[];
-  ageGroupAffected: string;
-  symptomDuration: string;
-  waterBodiesCount: string;
-  avgPH: string;
-  avgTurbidity: string;
-  createdAt: string;
+  user_id: string;
+  date_of_survey: string;
+  booth_no: string;
+  total_people?: number;
+  survey_data: any;
+  created_at: string;
 }
 
 const ASHAProfile = () => {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [userSurveys, setUserSurveys] = useState<Survey[]>([]);
+  const [userSurveys, setUserSurveys] = useState<SurveyRow[]>([]);
 
   useEffect(() => {
-    const user = JSON.parse(localStorage.getItem("currentUser") || "null");
-    if (!user || user.role !== "asha") {
-      navigate("/asha/login");
-      return;
-    }
-    setCurrentUser(user);
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/asha/login');
+        return;
+      }
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (!profile || profile.role !== 'asha_worker') {
+        navigate('/asha/login');
+        return;
+      }
+      setCurrentUser({ id: user.id, name: profile.name, role: profile.role });
 
-    // Get user's surveys from last month
-    const allSurveys = JSON.parse(localStorage.getItem("healthSurveys") || "[]");
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
-    const filteredSurveys = allSurveys
-      .filter((survey: Survey) => 
-        survey.ashaWorkerId === user.id && 
-        new Date(survey.createdAt) >= oneMonthAgo
-      )
-      .sort((a: Survey, b: Survey) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-    setUserSurveys(filteredSurveys);
+      try {
+        const data = await getMySurveys(user.id);
+        setUserSurveys(data as SurveyRow[]);
+      } catch (error) {
+        // ignore
+      }
+    })();
   }, [navigate]);
 
   const formatDate = (dateString: string) => {
@@ -70,13 +65,25 @@ const ASHAProfile = () => {
     });
   };
 
-  const getAgeGroupLabel = (value: string) => {
-    const labels: { [key: string]: string } = {
-      children: "Children (0-12 years)",
-      adults: "Adults (13-60 years)",
-      elderly: "Elderly (60+ years)"
-    };
-    return labels[value] || value;
+  const getSurveyTotalPeople = (survey: SurveyRow) => Number(survey.total_people || survey.survey_data?.totalPeopleSurveyed || 0);
+
+  const toDisplayPercentage = (survey: SurveyRow, value: number) => {
+    const numericValue = Number(value) || 0;
+    if (survey.survey_data?.surveyValueFormat === 'percentage') {
+      return numericValue;
+    }
+
+    const totalPeople = getSurveyTotalPeople(survey);
+    if (!totalPeople) {
+      return 0;
+    }
+
+    return Number(((numericValue / totalPeople) * 100).toFixed(2));
+  };
+
+  const getAgeGroupSummary = (survey: SurveyRow) => {
+    const a = survey.survey_data?.ageGroups || {};
+    return `Children: ${toDisplayPercentage(survey, a.children0to12 || 0)}%, Adults: ${toDisplayPercentage(survey, a.adults13to60 || 0)}%, Elderly: ${toDisplayPercentage(survey, a.elderly60plus || 0)}%`;
   };
 
   if (!currentUser) {
@@ -123,7 +130,7 @@ const ASHAProfile = () => {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-3 gap-6">
-                <div className="flex items-center space-x-3">
+                {/* <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
                     <User className="w-5 h-5 text-primary" />
                   </div>
@@ -131,9 +138,9 @@ const ASHAProfile = () => {
                     <p className="text-sm text-muted-foreground">Full Name</p>
                     <p className="font-semibold">{currentUser.name}</p>
                   </div>
-                </div>
+                </div> */}
 
-                <div className="flex items-center space-x-3">
+                {/* <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-secondary/10 rounded-full flex items-center justify-center">
                     <Phone className="w-5 h-5 text-secondary" />
                   </div>
@@ -141,9 +148,9 @@ const ASHAProfile = () => {
                     <p className="text-sm text-muted-foreground">Phone Number</p>
                     <p className="font-semibold">{currentUser.phone}</p>
                   </div>
-                </div>
+                </div> */}
 
-                <div className="flex items-center space-x-3">
+                {/* <div className="flex items-center space-x-3">
                   <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
                     <Calendar className="w-5 h-5 text-accent" />
                   </div>
@@ -157,7 +164,7 @@ const ASHAProfile = () => {
                       })}
                     </p>
                   </div>
-                </div>
+                </div> */}
               </div>
             </CardContent>
           </Card>
@@ -184,7 +191,7 @@ const ASHAProfile = () => {
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Unique Booths</p>
                     <p className="text-3xl font-bold text-secondary">
-                      {new Set(userSurveys.map(s => s.boothNumber)).size}
+                      {new Set(userSurveys.map(s => s.booth_no)).size}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center">
@@ -216,7 +223,7 @@ const ASHAProfile = () => {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Activity className="w-5 h-5 mr-2" />
-                Survey History (Last Month)
+                Survey History
               </CardTitle>
               <CardDescription>
                 Your recent health monitoring surveys and submissions
@@ -244,46 +251,40 @@ const ASHAProfile = () => {
                       <div className="flex items-start justify-between mb-4">
                         <div>
                           <h4 className="font-semibold text-lg">
-                            Survey - Booth {survey.boothNumber}
+                            Survey - Booth {survey.booth_no}
                           </h4>
                           <p className="text-sm text-muted-foreground">
-                            Submitted on {formatDate(survey.createdAt)}
+                            Submitted on {formatDate(survey.created_at)}
                           </p>
                         </div>
-                        <Badge variant="outline" className="text-primary border-primary">
-                          {survey.surveyDate}
-                        </Badge>
+                        <Button size="sm" variant="outline" onClick={() => navigate(`/asha/survey/${survey.id}`)}>
+                          Edit
+                        </Button>
                       </div>
 
                       <div className="grid md:grid-cols-2 gap-4 text-sm">
                         <div>
                           <p className="font-medium mb-1">Reported Symptoms:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {survey.symptoms.map((symptom) => (
-                              <Badge key={symptom} variant="secondary" className="text-xs">
-                                {symptom}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="font-medium mb-1">Age Group Affected:</p>
                           <p className="text-muted-foreground">
-                            {getAgeGroupLabel(survey.ageGroupAffected)}
+                            D:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.diarrhoea || 0)}%, Ab:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.abdominalPain || 0)}%, Dw:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.dehydrationWeakness || 0)}%, V:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.vomiting || 0)}%, F:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.fever || 0)}%, SR:{toDisplayPercentage(survey, survey.survey_data?.symptoms?.skinRashes || 0)}%
                           </p>
                         </div>
 
                         <div>
+                          <p className="font-medium mb-1">Age Group Affected:</p>
+                          <p className="text-muted-foreground">{getAgeGroupSummary(survey)}</p>
+                        </div>
+
+                        <div>
                           <p className="font-medium mb-1">Symptom Duration:</p>
-                          <p className="text-muted-foreground">{survey.symptomDuration}</p>
+                          <p className="text-muted-foreground">{survey.survey_data?.avgSymptomDuration}</p>
                         </div>
 
                         <div>
                           <p className="font-medium mb-1">Water Quality:</p>
                           <p className="text-muted-foreground">
-                            {survey.waterBodiesCount} bodies, pH: {survey.avgPH}, 
-                            Turbidity: {survey.avgTurbidity} NTU
+                            {survey.survey_data?.numberOfWaterBodies || 0} bodies, pH: {survey.survey_data?.avgPH || 0}, 
+                            Turbidity: {survey.survey_data?.avgTurbidity || 0} NTU, Temp: {survey.survey_data?.avgTemperature || 0} °C
                           </p>
                         </div>
                       </div>

@@ -4,59 +4,62 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Shield, ArrowLeft, User, Lock } from "lucide-react";
+import { Shield, ArrowLeft, Mail, Lock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 
 const GovLogin = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [formData, setFormData] = useState({
-    username: "",
+    email: "",
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
-
-  // Demo credentials for government officials
-  const demoCredentials = [
-    { username: "admin", password: "admin123", name: "District Health Officer" },
-    { username: "health_dept", password: "health123", name: "Health Department Admin" },
-    { username: "gov_official", password: "gov123", name: "Government Official" },
-  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Check demo credentials
-    const validCredential = demoCredentials.find(
-      cred => cred.username === formData.username && cred.password === formData.password
-    );
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
 
-    if (validCredential) {
-      // Store current session
-      localStorage.setItem("currentUser", JSON.stringify({
-        id: "gov_" + validCredential.username,
-        name: validCredential.name,
-        username: validCredential.username,
-        role: "government",
-        loginTime: new Date().toISOString(),
-      }));
+      if (error) throw error;
+
+      const userId = data.user?.id;
+      if (!userId) throw new Error("Authentication failed. Please try again.");
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("name, role")
+        .eq("id", userId)
+        .single();
+
+      if (profileError) throw profileError;
+
+      if (profile?.role !== "government") {
+        await supabase.auth.signOut();
+        throw new Error("This account is not authorized for Government Dashboard.");
+      }
 
       toast({
         title: "Welcome!",
-        description: `Successfully logged in as ${validCredential.name}`,
+        description: `Successfully logged in as ${profile?.name || "Government Official"}`,
       });
 
       navigate("/gov/dashboard");
-    } else {
+    } catch (err: any) {
       toast({
         title: "Login Failed",
-        description: "Invalid username or password. Try: admin/admin123",
+        description: err.message || "Invalid email or password",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,17 +101,17 @@ const GovLogin = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-sm font-medium">
-                  Username
+                <Label htmlFor="email" className="text-sm font-medium">
+                  Email
                 </Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                   <Input
-                    id="username"
-                    name="username"
-                    type="text"
-                    placeholder="Enter your username"
-                    value={formData.username}
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="Enter your official email"
+                    value={formData.email}
                     onChange={handleChange}
                     className="pl-10"
                     required
@@ -143,16 +146,6 @@ const GovLogin = () => {
                 {isLoading ? "Signing In..." : "Sign In"}
               </Button>
             </form>
-
-            {/* Demo Credentials Info */}
-            <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-              <h4 className="font-medium text-sm mb-2">Demo Credentials:</h4>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <p>• admin / admin123</p>
-                <p>• health_dept / health123</p>
-                <p>• gov_official / gov123</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
