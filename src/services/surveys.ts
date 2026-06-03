@@ -385,13 +385,105 @@ export async function getAshaWorkersCount() {
   return count || 0
 }
 
-export async function getSurveysForMunicipality(municipality: string) {
+export async function getAshaWorkersList() {
   const { data, error } = await supabase
-    .from('surveys')
-    .select('*')
-    .eq('municipality', municipality)
-    .order('created_at', { ascending: false })
+    .from('profiles')
+    .select('id, name')
+    .eq('role', 'asha_worker')
 
   if (error) throw error
   return data || []
 }
+
+export async function getSymptomSurveysForMunicipality(municipalityId: number) {
+  // Fetch parent surveys
+  const { data: parentSurveys, error: parentError } = await supabase
+    .from('symptom_survey')
+    .select('*, municipalities(municipality_name)')
+    .eq('municipality_id', municipalityId)
+    .order('survey_date', { ascending: false })
+
+  if (parentError) throw parentError
+
+  if (!parentSurveys || parentSurveys.length === 0) {
+    return []
+  }
+
+  // Fetch child surveys
+  const surveyIds = parentSurveys.map((p: any) => p.survey_id)
+  const { data: childSurveys, error: childError } = await supabase
+    .from('waterquality_survey')
+    .select('*')
+    .in('survey_id', surveyIds)
+
+  if (childError) throw childError
+
+  // Group child surveys by survey_id
+  const childMap = new Map<number, any[]>()
+  for (const row of (childSurveys || [])) {
+    if (!childMap.has(row.survey_id)) {
+      childMap.set(row.survey_id, [])
+    }
+    childMap.get(row.survey_id)!.push(row)
+  }
+
+  // Map to the shape expected by frontend components
+  return parentSurveys.map((row: any) => {
+    const kids = childMap.get(row.survey_id) || []
+    const noWaterBodies = kids[0]?.no_waterbodies || 0
+
+    let avgPH = 0
+    let avgTurbidity = 0
+    let avgTds = 0
+    if (kids.length > 0) {
+      const sumPH = kids.reduce((acc, k) => acc + (k.ph || 0), 0)
+      const sumTurbidity = kids.reduce((acc, k) => acc + (k.turbidity || 0), 0)
+      const sumTds = kids.reduce((acc, k) => acc + (k.tds || 0), 0)
+      avgPH = sumPH / kids.length
+      avgTurbidity = sumTurbidity / kids.length
+      avgTds = sumTds / kids.length
+    }
+
+    return {
+      id: String(row.survey_id),
+      booth_no: String(row.booth_no || ''),
+      total_people: row.total_people_surveyed || 0,
+      created_at: new Date(row.survey_date).toISOString(),
+      user_id: row.user_id,
+      survey_data: {
+        surveyDate: row.survey_date,
+        pincode: row.pincode,
+        municipality: row.municipalities?.municipality_name || '',
+        wardNo: row.ward_no,
+        boothNo: row.booth_no,
+        totalPeopleSurveyed: row.total_people_surveyed,
+        symptoms: {
+          diarrhoea: row.diarrhoea_count || 0,
+          abdominalPain: row.abdominal_pain_count || 0,
+          dehydrationWeakness: row.dehydration_count || 0,
+          vomiting: row.vomiting_count || 0,
+          fever: row.fever_count || 0,
+          skinRashes: row.skin_rashes_count || 0,
+        },
+        ageGroups: {
+          children0to12: row.child_count || 0,
+          adults13to60: row.adult_count || 0,
+          elderly60plus: row.senior_count || 0,
+        },
+        avgSymptomDuration: String(row.avg_symptom_duration || ''),
+        numberOfWaterBodies: noWaterBodies,
+        avgPH: Number(avgPH.toFixed(2)),
+        avgTurbidity: Number(avgTurbidity.toFixed(2)),
+        avgTds: Number(avgTds.toFixed(2)),
+        avgTemperature: 0,
+        waterBodyAssessments: kids.map(k => ({
+          wid: k.wid,
+          ph: String(k.ph || ''),
+          turbidity: String(k.turbidity || ''),
+          tds: String(k.tds || ''),
+        }))
+      }
+    }
+  })
+}
+

@@ -87,8 +87,14 @@ export async function listAllMunicipalitiesWithScores() {
   const municipalities = await hierarchyRepo.listMunicipalities();
   return Promise.all(
     municipalities.map(async (m) => {
-      const latest = await reportRepo.getLatestMunicipalityScore(m.id);
-      return { ...m, municipalityScore: latest?.municipality_score ?? null };
+      const id = m.id || m.municipality_id;
+      const latest = await reportRepo.getLatestMunicipalityScore(id);
+      return {
+        id: Number(id),
+        name: m.name || m.municipality_name || '',
+        created_at: m.created_at,
+        municipalityScore: latest?.municipality_score ?? null
+      };
     })
   );
 }

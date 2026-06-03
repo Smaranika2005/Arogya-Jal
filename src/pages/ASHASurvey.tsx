@@ -21,6 +21,46 @@ type MunicipalityOption = {
   name: string;
 };
 
+const FALLBACK_WATER_BODIES: Record<number, { wid: number; wname: string; municipality_id: number }[]> = {
+  1: [
+    { wid: 1, wname: 'Rabindra Sarobar Lake', municipality_id: 1 },
+    { wid: 2, wname: 'Subhash Sarobar Lake', municipality_id: 1 },
+    { wid: 3, wname: 'East Kolkata Wetlands', municipality_id: 1 },
+    { wid: 13, wname: 'Hooghly River Point', municipality_id: 1 }
+  ],
+  2: [
+    { wid: 7, wname: 'Amrita Bandh', municipality_id: 2 }
+  ],
+  3: [
+    { wid: 5, wname: 'Mirik Lake', municipality_id: 3 },
+    { wid: 6, wname: 'Senchal Lake', municipality_id: 3 }
+  ],
+  4: [
+    { wid: 11, wname: 'Durgapur Barrage Lake', municipality_id: 4 },
+    { wid: 12, wname: 'Troika Park Lake', municipality_id: 4 }
+  ],
+  5: [
+    { wid: 14, wname: 'Lal Dighi Pond', municipality_id: 5 },
+    { wid: 15, wname: 'Hooghly River Bank', municipality_id: 5 }
+  ],
+  6: [
+    { wid: 4, wname: 'Santragachi Jheel', municipality_id: 6 }
+  ],
+  7: [
+    { wid: 16, wname: 'Salt Lake Central Park Lake', municipality_id: 7 },
+    { wid: 17, wname: 'Nalban Lake', municipality_id: 7 }
+  ],
+  8: [
+    { wid: 8, wname: 'Kalyani Lake Park', municipality_id: 8 }
+  ],
+  9: [
+    { wid: 9, wname: 'Barasat Dighi', municipality_id: 9 }
+  ],
+  10: [
+    { wid: 10, wname: 'Bally Khal Point', municipality_id: 10 }
+  ]
+};
+
 const ASHASurvey = () => {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -140,10 +180,14 @@ const ASHASurvey = () => {
 
         if (error) throw error;
 
-        const allBodies = data || [];
+        let allBodies = data || [];
         console.log("fetchWaterBodiesForMuni: All water bodies in DB =", allBodies);
 
-        const list = allBodies.filter(wb => Number(wb.municipality_id) === Number(selectedMunicipalityId));
+        let list = allBodies.filter(wb => Number(wb.municipality_id) === Number(selectedMunicipalityId));
+        if (list.length === 0) {
+          console.log("fetchWaterBodiesForMuni: No remote records found, using fallback water bodies for municipality:", selectedMunicipalityId);
+          list = FALLBACK_WATER_BODIES[Number(selectedMunicipalityId)] || [];
+        }
         console.log("fetchWaterBodiesForMuni: Filtered water bodies for this municipality =", list);
 
         setWaterBodiesList(list);

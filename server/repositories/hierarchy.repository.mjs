@@ -73,9 +73,14 @@ export class HierarchyRepository {
     const { data, error } = await supabaseAdmin()
       .from('municipalities')
       .select('*')
-      .eq('id', id)
-      .single();
+      .or(`id.eq.${id},municipality_id.eq.${id}`)
+      .maybeSingle();
     if (error) throw error;
-    return data;
+    if (!data) return null;
+    return {
+      id: Number(data.id || data.municipality_id),
+      name: data.name || data.municipality_name || '',
+      created_at: data.created_at
+    };
   }
 }

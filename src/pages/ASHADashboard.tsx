@@ -64,7 +64,7 @@ const ASHADashboard = () => {
         <div className="mb-8">
           <h2 className="text-3xl font-bold mb-2">Welcome, {currentUser.name}!</h2>
           <p className="text-muted-foreground">
-            Collect TDS and turbidity readings. pH is captured automatically from IoT sensors.
+            Collect community health data and take a step towards healthier environment. 
           </p>
         </div>
 
@@ -91,7 +91,7 @@ const ASHADashboard = () => {
             <CardContent className="p-6 flex items-center gap-4">
               <Droplets className="h-10 w-10 text-blue-600" />
               <div>
-                <p className="text-sm text-muted-foreground">pH Source</p>
+                <p className="text-sm text-muted-foreground">Water Parameter Source</p>
                 <p className="text-2xl font-bold">IoT Sensor</p>
               </div>
             </CardContent>
