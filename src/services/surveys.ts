@@ -1,179 +1,377 @@
 import { supabase } from '@/lib/supabase'
 
+export type WaterBodyAssessment = {
+  wid: number
+  ph: string
+  turbidity: string
+  tds: string
+}
+
 export type SurveyFormData = {
   surveyDate: string
   pincode: string
   municipality: string
   wardNo: string
   boothNo: string
-  totalPeopleSurveyed: number
+  totalPeopleSurveyed: number | ''
   symptoms: {
-    diarrhoea: number
-    abdominalPain: number
-    dehydrationWeakness: number
-    vomiting: number
-    fever: number
-    skinRashes: number
+    diarrhoea: number | ''
+    abdominalPain: number | ''
+    dehydrationWeakness: number | ''
+    vomiting: number | ''
+    fever: number | ''
+    skinRashes: number | ''
   }
   ageGroups: {
-    children0to12: number
-    adults13to60: number
-    elderly60plus: number
+    children0to12: number | ''
+    adults13to60: number | ''
+    elderly60plus: number | ''
   }
   avgSymptomDuration: string
-  numberOfWaterBodies: number
-  avgPH: number
-  avgTurbidity: number
-  avgTemperature: number
-}
-
-const SYMPTOM_KEYS = [
-  'diarrhoea',
-  'abdominalPain',
-  'dehydrationWeakness',
-  'vomiting',
-  'fever',
-  'skinRashes',
-] as const
-
-const AGE_GROUP_KEYS = [
-  'children0to12',
-  'adults13to60',
-  'elderly60plus',
-] as const
-
-const roundPercentage = (value: number) => Number(value.toFixed(2))
-
-const toPercentage = (count: number, totalPeople: number) => {
-  if (!totalPeople) return 0
-  return roundPercentage((count / totalPeople) * 100)
-}
-
-const toCount = (percentage: number, totalPeople: number) => {
-  if (!totalPeople) return 0
-  return Math.round((percentage / 100) * totalPeople)
-}
-
-export const normalizeSurveyForStorage = (form: SurveyFormData) => {
-  const totalPeople = Number(form.totalPeopleSurveyed) || 0
-
-  return {
-    ...form,
-    symptoms: Object.fromEntries(
-      SYMPTOM_KEYS.map((key) => [key, toPercentage(form.symptoms[key], totalPeople)])
-    ),
-    ageGroups: Object.fromEntries(
-      AGE_GROUP_KEYS.map((key) => [key, toPercentage(form.ageGroups[key], totalPeople)])
-    ),
-    surveyValueFormat: 'percentage' as const,
-  }
-}
-
-export const denormalizeSurveyForForm = (surveyData: any): SurveyFormData => {
-  if (!surveyData) {
-    return surveyData
-  }
-
-  if (surveyData.surveyValueFormat !== 'percentage') {
-    return surveyData as SurveyFormData
-  }
-
-  const totalPeople = Number(surveyData.totalPeopleSurveyed) || 0
-
-  return {
-    ...surveyData,
-    symptoms: Object.fromEntries(
-      SYMPTOM_KEYS.map((key) => [key, toCount(Number(surveyData.symptoms?.[key]) || 0, totalPeople)])
-    ),
-    ageGroups: Object.fromEntries(
-      AGE_GROUP_KEYS.map((key) => [key, toCount(Number(surveyData.ageGroups?.[key]) || 0, totalPeople)])
-    ),
-  } as SurveyFormData
+  numberOfWaterBodies: number | ''
+  waterBodyAssessments?: WaterBodyAssessment[]
 }
 
 export async function createSurvey(userId: string, form: SurveyFormData) {
-  const surveyData = normalizeSurveyForStorage(form)
-
-  const { data, error } = await supabase
-    .from('surveys')
-    .insert([
-      {
-        user_id: userId,
-        date_of_survey: form.surveyDate,
-        booth_no: form.boothNo,
-        pincode: form.pincode,
-        municipality: form.municipality,
-        ward_no: form.wardNo,
-        total_people: form.totalPeopleSurveyed,
-        survey_data: surveyData,
-      }
-    ])
-    .select()
+  // Look up municipality_id
+  const { data: muniData, error: muniError } = await supabase
+    .from('municipalities')
+    .select('municipality_id')
+    .eq('municipality_name', form.municipality)
     .single()
 
-  if (error) throw error
-  return data
+  if (muniError) throw new Error(`Municipality lookup failed: ${muniError.message}`)
+  const municipalityId = muniData.municipality_id
+
+  // 1. Insert parent survey into symptom_survey
+  const { data: parentData, error: parentError } = await supabase
+    .from('symptom_survey')
+    .insert([
+      {
+        survey_date: form.surveyDate,
+        pincode: form.pincode,
+        municipality_id: municipalityId,
+        ward_no: form.wardNo,
+        booth_no: form.boothNo,
+        user_id: userId,
+        total_people_surveyed: Number(form.totalPeopleSurveyed) || 0,
+        diarrhoea_count: Number(form.symptoms.diarrhoea) || 0,
+        abdominal_pain_count: Number(form.symptoms.abdominalPain) || 0,
+        dehydration_count: Number(form.symptoms.dehydrationWeakness) || 0,
+        vomiting_count: Number(form.symptoms.vomiting) || 0,
+        fever_count: Number(form.symptoms.fever) || 0,
+        skin_rashes_count: Number(form.symptoms.skinRashes) || 0,
+        child_count: Number(form.ageGroups.children0to12) || 0,
+        adult_count: Number(form.ageGroups.adults13to60) || 0,
+        senior_count: Number(form.ageGroups.elderly60plus) || 0,
+        avg_symptom_duration: parseFloat(form.avgSymptomDuration) || 0
+      }
+    ])
+    .select('survey_id, booth_no')
+    .single()
+
+  if (parentError) throw parentError
+
+  const surveyId = parentData.survey_id
+  const boothNo = parentData.booth_no
+
+  // 2. Insert child records into waterquality_survey
+  if (form.waterBodyAssessments && form.waterBodyAssessments.length > 0) {
+    const childRows = form.waterBodyAssessments.map(item => ({
+      survey_id: surveyId,
+      booth_no: boothNo,
+      wid: item.wid,
+      ph: parseFloat(item.ph) || 0,
+      turbidity: parseFloat(item.turbidity) || 0,
+      tds: parseFloat(item.tds) || 0,
+      no_waterbodies: Number(form.numberOfWaterBodies) || 0
+    }))
+
+    const { error: childError } = await supabase
+      .from('waterquality_survey')
+      .insert(childRows)
+
+    if (childError) throw childError
+  }
+
+  return parentData
 }
 
 export async function updateSurvey(surveyId: string, userId: string, form: SurveyFormData) {
-  const surveyData = normalizeSurveyForStorage(form)
-
-  const { data, error } = await supabase
-    .from('surveys')
-    .update({
-      date_of_survey: form.surveyDate,
-      booth_no: form.boothNo,
-      pincode: form.pincode,
-      municipality: form.municipality,
-      ward_no: form.wardNo,
-      total_people: form.totalPeopleSurveyed,
-      survey_data: surveyData,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', surveyId)
-    .eq('user_id', userId)
-    .select()
+  // Look up municipality_id
+  const { data: muniData, error: muniError } = await supabase
+    .from('municipalities')
+    .select('municipality_id')
+    .eq('municipality_name', form.municipality)
     .single()
 
-  if (error) throw error
-  return data
+  if (muniError) throw new Error(`Municipality lookup failed: ${muniError.message}`)
+  const municipalityId = muniData.municipality_id
+
+  // 1. Update symptom_survey
+  const { data: parentData, error: parentError } = await supabase
+    .from('symptom_survey')
+    .update({
+      survey_date: form.surveyDate,
+      pincode: form.pincode,
+      municipality_id: municipalityId,
+      ward_no: form.wardNo,
+      booth_no: form.boothNo,
+      user_id: userId,
+      total_people_surveyed: Number(form.totalPeopleSurveyed) || 0,
+      diarrhoea_count: Number(form.symptoms.diarrhoea) || 0,
+      abdominal_pain_count: Number(form.symptoms.abdominalPain) || 0,
+      dehydration_count: Number(form.symptoms.dehydrationWeakness) || 0,
+      vomiting_count: Number(form.symptoms.vomiting) || 0,
+      fever_count: Number(form.symptoms.fever) || 0,
+      skin_rashes_count: Number(form.symptoms.skinRashes) || 0,
+      child_count: Number(form.ageGroups.children0to12) || 0,
+      adult_count: Number(form.ageGroups.adults13to60) || 0,
+      senior_count: Number(form.ageGroups.elderly60plus) || 0,
+      avg_symptom_duration: parseFloat(form.avgSymptomDuration) || 0
+    })
+    .eq('survey_id', surveyId)
+    .select('survey_id, booth_no')
+    .single()
+
+  if (parentError) throw parentError
+
+  // 2. Delete old child records
+  const { error: deleteError } = await supabase
+    .from('waterquality_survey')
+    .delete()
+    .eq('survey_id', surveyId)
+
+  if (deleteError) throw deleteError
+
+  // 3. Insert new child records
+  if (form.waterBodyAssessments && form.waterBodyAssessments.length > 0) {
+    const childRows = form.waterBodyAssessments.map(item => ({
+      survey_id: surveyId,
+      booth_no: parentData.booth_no,
+      wid: item.wid,
+      ph: parseFloat(item.ph) || 0,
+      turbidity: parseFloat(item.turbidity) || 0,
+      tds: parseFloat(item.tds) || 0,
+      no_waterbodies: Number(form.numberOfWaterBodies) || 0
+    }))
+
+    const { error: childError } = await supabase
+      .from('waterquality_survey')
+      .insert(childRows)
+
+    if (childError) throw childError
+  }
+
+  return parentData
 }
 
 export async function getMySurveys(userId: string) {
-  const { data, error } = await supabase
-    .from('surveys')
-    .select('*')
+  // Fetch parent surveys
+  const { data: parentSurveys, error: parentError } = await supabase
+    .from('symptom_survey')
+    .select('*, municipalities(municipality_name)')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    .order('survey_date', { ascending: false })
 
-  if (error) throw error
-  return data
+  if (parentError) throw parentError
+
+  // Fetch child surveys
+  const { data: childSurveys, error: childError } = await supabase
+    .from('waterquality_survey')
+    .select('*')
+
+  if (childError) throw childError
+
+  // Group child surveys by survey_id
+  const childMap = new Map<number, any[]>()
+  for (const row of (childSurveys || [])) {
+    if (!childMap.has(row.survey_id)) {
+      childMap.set(row.survey_id, [])
+    }
+    childMap.get(row.survey_id)!.push(row)
+  }
+
+  // Map to the shape expected by frontend components (e.g. ASHAProfile)
+  return (parentSurveys || []).map((row: any) => {
+    const kids = childMap.get(row.survey_id) || []
+    const noWaterBodies = kids[0]?.no_waterbodies || 0
+
+    let avgPH = 0
+    let avgTurbidity = 0
+    let avgTds = 0
+    if (kids.length > 0) {
+      const sumPH = kids.reduce((acc, k) => acc + (k.ph || 0), 0)
+      const sumTurbidity = kids.reduce((acc, k) => acc + (k.turbidity || 0), 0)
+      const sumTds = kids.reduce((acc, k) => acc + (k.tds || 0), 0)
+      avgPH = Number((sumPH / kids.length).toFixed(2))
+      avgTurbidity = Number((sumTurbidity / kids.length).toFixed(2))
+      avgTds = Number((sumTds / kids.length).toFixed(2))
+    }
+
+    return {
+      id: String(row.survey_id),
+      booth_no: String(row.booth_no || ''),
+      total_people: row.total_people_surveyed || 0,
+      created_at: new Date(row.survey_date).toISOString(),
+      survey_data: {
+        surveyDate: row.survey_date,
+        pincode: row.pincode,
+        municipality: row.municipalities?.municipality_name || '',
+        wardNo: row.ward_no,
+        boothNo: row.booth_no,
+        totalPeopleSurveyed: row.total_people_surveyed,
+        symptoms: {
+          diarrhoea: row.diarrhoea_count || 0,
+          abdominalPain: row.abdominal_pain_count || 0,
+          dehydrationWeakness: row.dehydration_count || 0,
+          vomiting: row.vomiting_count || 0,
+          fever: row.fever_count || 0,
+          skinRashes: row.skin_rashes_count || 0,
+        },
+        ageGroups: {
+          children0to12: row.child_count || 0,
+          adults13to60: row.adult_count || 0,
+          elderly60plus: row.senior_count || 0,
+        },
+        avgSymptomDuration: String(row.avg_symptom_duration || ''),
+        numberOfWaterBodies: noWaterBodies,
+        avgPH: avgPH,
+        avgTurbidity: avgTurbidity,
+        avgTemperature: 0,
+        waterBodyAssessments: kids.map(k => ({
+          wid: k.wid,
+          ph: String(k.ph || ''),
+          turbidity: String(k.turbidity || ''),
+          tds: String(k.tds || ''),
+        }))
+      }
+    }
+  })
 }
 
 export async function getSurveyById(id: string, userId: string) {
-  const { data, error } = await supabase
-    .from('surveys')
-    .select('*')
-    .eq('id', id)
+  // Fetch parent
+  const { data: parentData, error: parentError } = await supabase
+    .from('symptom_survey')
+    .select('*, municipalities(municipality_name)')
+    .eq('survey_id', id)
     .eq('user_id', userId)
     .single()
 
-  if (error) throw error
-  return data
+  if (parentError) throw parentError
+
+  // Fetch children
+  const { data: childData, error: childError } = await supabase
+    .from('waterquality_survey')
+    .select('*')
+    .eq('survey_id', id)
+
+  if (childError) throw childError
+
+  // Merge into SurveyFormData structure
+  const formData: SurveyFormData = {
+    surveyDate: parentData.survey_date,
+    pincode: parentData.pincode,
+    municipality: parentData.municipalities?.municipality_name || '',
+    wardNo: parentData.ward_no,
+    boothNo: parentData.booth_no,
+    totalPeopleSurveyed: parentData.total_people_surveyed,
+    symptoms: {
+      diarrhoea: parentData.diarrhoea_count || 0,
+      abdominalPain: parentData.abdominal_pain_count || 0,
+      dehydrationWeakness: parentData.dehydration_count || 0,
+      vomiting: parentData.vomiting_count || 0,
+      fever: parentData.fever_count || 0,
+      skinRashes: parentData.skin_rashes_count || 0,
+    },
+    ageGroups: {
+      children0to12: parentData.child_count || 0,
+      adults13to60: parentData.adult_count || 0,
+      elderly60plus: parentData.senior_count || 0,
+    },
+    avgSymptomDuration: String(parentData.avg_symptom_duration || ''),
+    numberOfWaterBodies: childData?.[0]?.no_waterbodies || 0,
+    waterBodyAssessments: (childData || []).map(item => ({
+      wid: item.wid,
+      ph: String(item.ph || ''),
+      turbidity: String(item.turbidity || ''),
+      tds: String(item.tds || ''),
+    }))
+  }
+
+  return {
+    survey_data: formData
+  } as any
 }
 
 // Function to get all surveys for government dashboard
 export async function getAllSurveys() {
-  const { data, error } = await supabase
-    .from('surveys')
-    .select(`
-      *,
-      profiles(name)
-    `)
-    .order('created_at', { ascending: false })
+  const { data: parentSurveys, error: parentError } = await supabase
+    .from('symptom_survey')
+    .select('*, municipalities(municipality_name)')
+    .order('survey_date', { ascending: false })
 
-  if (error) throw error
-  return data || []
+  if (parentError) throw parentError
+
+  const { data: childSurveys, error: childError } = await supabase
+    .from('waterquality_survey')
+    .select('*')
+
+  if (childError) throw childError
+
+  const childMap = new Map<number, any[]>()
+  for (const row of (childSurveys || [])) {
+    if (!childMap.has(row.survey_id)) {
+      childMap.set(row.survey_id, [])
+    }
+    childMap.get(row.survey_id)!.push(row)
+  }
+
+  return (parentSurveys || []).map((row: any) => {
+    const kids = childMap.get(row.survey_id) || []
+    const noWaterBodies = kids[0]?.no_waterbodies || 0
+
+    let avgPH = 0
+    let avgTurbidity = 0
+    if (kids.length > 0) {
+      avgPH = kids.reduce((acc, k) => acc + (k.ph || 0), 0) / kids.length
+      avgTurbidity = kids.reduce((acc, k) => acc + (k.turbidity || 0), 0) / kids.length
+    }
+
+    return {
+      id: String(row.survey_id),
+      booth_no: String(row.booth_no || ''),
+      total_people: row.total_people_surveyed || 0,
+      created_at: new Date(row.survey_date).toISOString(),
+      survey_data: {
+        surveyDate: row.survey_date,
+        pincode: row.pincode,
+        municipality: row.municipalities?.municipality_name || '',
+        wardNo: row.ward_no,
+        boothNo: row.booth_no,
+        totalPeopleSurveyed: row.total_people_surveyed,
+        symptoms: {
+          diarrhoea: row.diarrhoea_count || 0,
+          abdominalPain: row.abdominal_pain_count || 0,
+          dehydrationWeakness: row.dehydration_count || 0,
+          vomiting: row.vomiting_count || 0,
+          fever: row.fever_count || 0,
+          skinRashes: row.skin_rashes_count || 0,
+        },
+        ageGroups: {
+          children0to12: row.child_count || 0,
+          adults13to60: row.adult_count || 0,
+          elderly60plus: row.senior_count || 0,
+        },
+        avgSymptomDuration: String(row.avg_symptom_duration || ''),
+        numberOfWaterBodies: noWaterBodies,
+        avgPH: Number(avgPH.toFixed(2)),
+        avgTurbidity: Number(avgTurbidity.toFixed(2)),
+        avgTemperature: 0
+      }
+    }
+  })
 }
 
 // Function to get all ASHA workers count for government dashboard

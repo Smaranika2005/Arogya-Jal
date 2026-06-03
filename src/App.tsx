@@ -30,6 +30,7 @@ const App = () => (
           <Route path="/asha/signup" element={<ASHASignup />} />
           <Route path="/asha/dashboard" element={<ASHADashboard />} />
           <Route path="/asha/survey" element={<ASHASurvey />} />
+          <Route path="/asha/survey/:id" element={<ASHASurvey />} />
           <Route path="/asha/water-quality" element={<ASHAWaterQuality />} />
           <Route path="/asha/profile" element={<ASHAProfile />} />
           <Route path="/gov/login" element={<GovLogin />} />

@@ -1,12 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, MapPin, Thermometer, Droplets } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Thermometer, Droplets, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { createSurvey, denormalizeSurveyForForm, getSurveyById, updateSurvey, type SurveyFormData } from "@/services/surveys";
+import { createSurvey, getSurveyById, updateSurvey, type SurveyFormData, type WaterBodyAssessment } from "@/services/surveys";
 import { supabase } from "@/lib/supabase";
 import {
   Select,
@@ -15,7 +15,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-// fetchMunicipalities queried from Supabase directly
 
 type MunicipalityOption = {
   id: number;
@@ -56,6 +55,27 @@ const ASHASurvey = () => {
     avgTemperature: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const isSubmitting = useRef(false);
+
+  // New states for Water Quality Assessment
+  const [waterBodiesList, setWaterBodiesList] = useState<any[]>([]);
+  const [maxWaterBodiesCount, setMaxWaterBodiesCount] = useState<number>(0);
+  const [waterBodyAssessments, setWaterBodyAssessments] = useState<WaterBodyAssessment[]>([]);
+  const [collapsedCards, setCollapsedCards] = useState<Record<number, boolean>>({});
+  const [waterBodiesLimitError, setWaterBodiesLimitError] = useState<string>("");
+  const [selectedMunicipalityId, setSelectedMunicipalityId] = useState<number | null>(null);
+
+  // Sync selected municipality ID based on name or when municipalities list is loaded
+  useEffect(() => {
+    if (formData.municipality && municipalities.length > 0) {
+      const muni = municipalities.find(m => m.name === formData.municipality);
+      if (muni) {
+        setSelectedMunicipalityId(muni.id);
+      }
+    } else {
+      setSelectedMunicipalityId(null);
+    }
+  }, [formData.municipality, municipalities]);
 
   useEffect(() => {
     (async () => {
@@ -103,6 +123,44 @@ const ASHASurvey = () => {
     loadMunicipalities();
   }, [currentUser, toast]);
 
+  // Fetch water bodies dynamically when municipality ID changes
+  useEffect(() => {
+    const fetchWaterBodiesForMuni = async () => {
+      if (!selectedMunicipalityId) {
+        setWaterBodiesList([]);
+        setMaxWaterBodiesCount(0);
+        return;
+      }
+
+      console.log("fetchWaterBodiesForMuni: Querying all water_bodies and filtering for municipality_id =", selectedMunicipalityId);
+      try {
+        const { data, error } = await supabase
+          .from('water_bodies')
+          .select('wid, wname, municipality_id');
+
+        if (error) throw error;
+
+        const allBodies = data || [];
+        console.log("fetchWaterBodiesForMuni: All water bodies in DB =", allBodies);
+
+        const list = allBodies.filter(wb => Number(wb.municipality_id) === Number(selectedMunicipalityId));
+        console.log("fetchWaterBodiesForMuni: Filtered water bodies for this municipality =", list);
+
+        setWaterBodiesList(list);
+        setMaxWaterBodiesCount(list.length);
+      } catch (err: any) {
+        console.error("fetchWaterBodiesForMuni: Error fetching water bodies", err);
+        toast({
+          title: "Error fetching water bodies",
+          description: err.message,
+          variant: "destructive"
+        });
+      }
+    };
+
+    fetchWaterBodiesForMuni();
+  }, [selectedMunicipalityId, toast]);
+
   useEffect(() => {
     const loadExisting = async () => {
       if (!id) return;
@@ -110,7 +168,11 @@ const ASHASurvey = () => {
         if (!currentUser) return;
         const data = await getSurveyById(id, currentUser.id);
         if (data?.survey_data) {
-          setFormData(denormalizeSurveyForForm(data.survey_data));
+          const formVal = data.survey_data;
+          setFormData(formVal);
+          if (formVal.waterBodyAssessments) {
+            setWaterBodyAssessments(formVal.waterBodyAssessments);
+          }
         }
       } catch (error: any) {
         toast({ title: "Unable to load survey", description: error.message, variant: "destructive" });
@@ -119,27 +181,161 @@ const ASHASurvey = () => {
     loadExisting();
   }, [id, toast, currentUser]);
 
+  // Card helpers
+  const addWaterBodyAssessment = () => {
+    if (!formData.municipality) {
+      toast({
+        title: "Municipality required",
+        description: "Please select a municipality before adding water bodies.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const limit = Number(formData.numberOfWaterBodies) || 0;
+    if (limit <= 0) {
+      toast({
+        title: "Number of Water Bodies required",
+        description: "Please specify a Number of Water Bodies greater than 0 before adding cards.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (waterBodyAssessments.length >= limit) {
+      setWaterBodiesLimitError(`Cannot add more cards than the specified Number of Water Bodies (${limit}).`);
+      toast({
+        title: "Limit reached",
+        description: `Cannot add more cards than the specified Number of Water Bodies (${limit}).`,
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setWaterBodiesLimitError("");
+    setWaterBodyAssessments(prev => [
+      ...prev,
+      { wid: 0, ph: "", turbidity: "", tds: "" }
+    ]);
+  };
+
+  const removeWaterBodyAssessment = (index: number) => {
+    setWaterBodyAssessments(prev => prev.filter((_, i) => i !== index));
+    setWaterBodiesLimitError("");
+  };
+
+  const handleCardFieldChange = (index: number, field: keyof WaterBodyAssessment, value: any) => {
+    setWaterBodyAssessments(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+
+  const toggleCollapse = (index: number) => {
+    setCollapsedCards(prev => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const getAvailableWaterBodies = (currentIndex: number) => {
+    const selectedWids = waterBodyAssessments
+      .map((item, idx) => idx !== currentIndex ? item.wid : 0)
+      .filter(Boolean);
+    return waterBodiesList.filter(wb => !selectedWids.includes(wb.wid));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting.current) return;
+    isSubmitting.current = true;
     setIsLoading(true);
+
+    const resetSubmission = () => {
+      setIsLoading(false);
+      isSubmitting.current = false;
+    };
 
     // Basic validation
     if (!formData.pincode || !formData.municipality || !formData.wardNo || !formData.boothNo) {
       toast({ title: "Missing fields", description: "Fill general information fields.", variant: "destructive" });
-      setIsLoading(false);
+      resetSubmission();
       return;
+    }
+
+    // Number of water bodies validation
+    if (formData.numberOfWaterBodies === undefined || formData.numberOfWaterBodies === null || formData.numberOfWaterBodies === '') {
+      toast({ title: "Validation Error", description: "Number of Water Bodies is required.", variant: "destructive" });
+      resetSubmission();
+      return;
+    }
+
+    const numWaterBodies = Number(formData.numberOfWaterBodies);
+    if (numWaterBodies < 0 || numWaterBodies > maxWaterBodiesCount) {
+      toast({ 
+        title: "Validation Error", 
+        description: `Number of Water Bodies must be between 0 and ${maxWaterBodiesCount} (total available for this municipality).`, 
+        variant: "destructive" 
+      });
+      resetSubmission();
+      return;
+    }
+
+    if (waterBodyAssessments.length > numWaterBodies) {
+      toast({
+        title: "Validation Error",
+        description: `You have added more cards (${waterBodyAssessments.length}) than the specified Number of Water Bodies (${numWaterBodies}).`,
+        variant: "destructive"
+      });
+      resetSubmission();
+      return;
+    }
+
+    // Validate each card
+    for (let i = 0; i < waterBodyAssessments.length; i++) {
+      const card = waterBodyAssessments[i];
+      if (!card.wid || card.wid <= 0) {
+        toast({ title: "Validation Error", description: `Please select a water body for Water Body ${i + 1}.`, variant: "destructive" });
+        resetSubmission();
+        return;
+      }
+      
+      const phVal = parseFloat(card.ph);
+      if (isNaN(phVal) || phVal < 0 || phVal > 14) {
+        toast({ title: "Validation Error", description: `pH for Water Body ${i + 1} must be a number between 0 and 14.`, variant: "destructive" });
+        resetSubmission();
+        return;
+      }
+
+      const turbVal = parseFloat(card.turbidity);
+      if (isNaN(turbVal) || turbVal <= 0) {
+        toast({ title: "Validation Error", description: `Turbidity for Water Body ${i + 1} must be a positive number.`, variant: "destructive" });
+        resetSubmission();
+        return;
+      }
+
+      const tdsVal = parseFloat(card.tds);
+      if (isNaN(tdsVal) || tdsVal <= 0) {
+        toast({ title: "Validation Error", description: `TDS for Water Body ${i + 1} must be a positive number.`, variant: "destructive" });
+        resetSubmission();
+        return;
+      }
     }
 
     if (!currentUser) {
       navigate('/asha/login');
+      resetSubmission();
       return;
     }
 
     try {
+      const payload = {
+        ...formData,
+        waterBodyAssessments
+      };
+
       if (id) {
-        await updateSurvey(id, currentUser.id, formData);
+        await updateSurvey(id, currentUser.id, payload);
       } else {
-        await createSurvey(currentUser.id, formData);
+        await createSurvey(currentUser.id, payload);
       }
       toast({
         title: id ? "Survey updated" : "Survey submitted",
@@ -148,8 +344,7 @@ const ASHASurvey = () => {
       navigate("/asha/profile");
     } catch (error: any) {
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
+      resetSubmission();
     }
   };
 
@@ -167,12 +362,12 @@ const ASHASurvey = () => {
       // Keep pincode/wardNo/boothNo as strings even if input type is number
       [name]: (name === 'pincode' || name === 'wardNo' || name === 'boothNo')
         ? value
-        : (e.target.type === 'number' ? Number(value) : value),
+        : (e.target.type === 'number' ? (value === '' ? '' : Number(value)) : value),
     }));
   };
 
   const handleNestedNumberChange = (path: 'symptoms' | 'ageGroups', key: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number(e.target.value || 0);
+    const value = e.target.value === '' ? '' : Number(e.target.value);
     setFormData(prev => ({
       ...prev,
       [path]: { ...prev[path], [key]: value },
@@ -403,11 +598,11 @@ const ASHASurvey = () => {
                 </div>
               </div>
 
-              {/* Water Quality Information */}
+              {/* Water Quality Assessment */}
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold border-b pb-2">Water Quality Assessment</h3>
                 
-                <div className="grid md:grid-cols-3 gap-6">
+                <div className="grid md:grid-cols-2 gap-6 items-end">
                   <div className="space-y-2">
                     <Label htmlFor="numberOfWaterBodies">Number of Water Bodies</Label>
                     <div className="relative">
@@ -417,6 +612,7 @@ const ASHASurvey = () => {
                         name="numberOfWaterBodies"
                         type="number"
                         min={0}
+                        max={maxWaterBodiesCount}
                         placeholder="Count"
                         value={formData.numberOfWaterBodies}
                         onChange={handleInputChange}
@@ -424,66 +620,144 @@ const ASHASurvey = () => {
                         required
                       />
                     </div>
+                    {formData.municipality && (
+                      <p className="text-xs text-muted-foreground">
+                        Max available for {formData.municipality}: {maxWaterBodiesCount}
+                      </p>
+                    )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="avgPH">Average pH of Water Bodies</Label>
-                    <div className="relative">
-                      <Thermometer className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="avgPH"
-                        name="avgPH"
-                        type="number"
-                        min={0}
-                        step="0.1"
-                        placeholder="pH value"
-                        value={formData.avgPH}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                        
-                        max="14"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="avgTurbidity">Average Turbidity (NTU)</Label>
-                    <div className="relative">
-                      <Droplets className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="avgTurbidity"
-                        name="avgTurbidity"
-                        type="number"
-                        min={0}
-                        step="0.1"
-                        placeholder="NTU value"
-                        value={formData.avgTurbidity}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                       
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="avgTemperature">Average Temperature (°C)</Label>
-                    <div className="relative">
-                      <Thermometer className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                      <Input
-                        id="avgTemperature"
-                        name="avgTemperature"
-                        type="number"
-                        step="0.1"
-                        placeholder="Temperature"
-                        value={formData.avgTemperature}
-                        onChange={handleInputChange}
-                        className="pl-10"
-                        required
-                      />
-                    </div>
+                  <div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={addWaterBodyAssessment}
+                      className="w-full md:w-auto"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Water Body
+                    </Button>
                   </div>
                 </div>
+
+                {waterBodiesLimitError && (
+                  <p className="text-sm font-medium text-destructive mt-2">
+                    {waterBodiesLimitError}
+                  </p>
+                )}
+
+                {/* Dynamic Card Layout */}
+                {waterBodyAssessments.length > 0 && (
+                  <div className="space-y-4">
+                    {waterBodyAssessments.map((assessment, index) => {
+                      const isCollapsed = !!collapsedCards[index];
+                      const availableBodies = getAvailableWaterBodies(index);
+                      const selectedBody = waterBodiesList.find(wb => wb.wid === assessment.wid);
+
+                      return (
+                        <Card key={index} className="border border-input overflow-hidden shadow-sm">
+                          {/* Card Header (Collapsible toggle + Title + Remove button) */}
+                          <div className="flex items-center justify-between bg-muted/30 px-4 py-3 border-b">
+                            <div 
+                              className="flex items-center space-x-2 cursor-pointer flex-grow"
+                              onClick={() => toggleCollapse(index)}
+                            >
+                              <span className="font-semibold text-sm text-primary">
+                                Water Body {index + 1} {selectedBody ? `— ${selectedBody.wname}` : ""}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {isCollapsed ? "(Click to expand)" : "(Click to collapse)"}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => removeWaterBodyAssessment(index)}
+                              className="h-8 px-3"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+
+                          {/* Card Content (Visible only if not collapsed) */}
+                          {!isCollapsed && (
+                            <CardContent className="p-4 space-y-4">
+                              <div className="grid md:grid-cols-2 gap-4">
+                                {/* Select Water Body */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`water-body-select-${index}`}>Select Water Body</Label>
+                                  <Select
+                                    value={assessment.wid ? String(assessment.wid) : ""}
+                                    onValueChange={(val) => handleCardFieldChange(index, 'wid', Number(val))}
+                                    required
+                                  >
+                                    <SelectTrigger id={`water-body-select-${index}`}>
+                                      <SelectValue placeholder="Select water body" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {availableBodies.map((wb) => (
+                                        <SelectItem key={wb.wid} value={String(wb.wid)}>
+                                          {wb.wname}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                {/* pH */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`ph-input-${index}`}>pH</Label>
+                                  <Input
+                                    id={`ph-input-${index}`}
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    max="14"
+                                    placeholder="pH (0-14)"
+                                    value={assessment.ph}
+                                    onChange={(e) => handleCardFieldChange(index, 'ph', e.target.value)}
+                                    required
+                                  />
+                                </div>
+
+                                {/* Turbidity */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`turbidity-input-${index}`}>Turbidity (NTU)</Label>
+                                  <Input
+                                    id={`turbidity-input-${index}`}
+                                    type="number"
+                                    step="0.1"
+                                    min="0.01"
+                                    placeholder="Turbidity (NTU)"
+                                    value={assessment.turbidity}
+                                    onChange={(e) => handleCardFieldChange(index, 'turbidity', e.target.value)}
+                                    required
+                                  />
+                                </div>
+
+                                {/* TDS */}
+                                <div className="space-y-2">
+                                  <Label htmlFor={`tds-input-${index}`}>TDS (mg/L)</Label>
+                                  <Input
+                                    id={`tds-input-${index}`}
+                                    type="number"
+                                    step="0.1"
+                                    min="0.01"
+                                    placeholder="TDS (mg/L)"
+                                    value={assessment.tds}
+                                    onChange={(e) => handleCardFieldChange(index, 'tds', e.target.value)}
+                                    required
+                                  />
+                                </div>
+                              </div>
+                            </CardContent>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Submit Button */}

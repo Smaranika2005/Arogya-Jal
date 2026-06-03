@@ -12,7 +12,8 @@ import {
   FileText,
   MapPin,
   Activity,
-  TrendingUp
+  TrendingUp,
+  Pencil
 } from "lucide-react";
 import { getMySurveys } from "@/services/surveys";
 import { supabase } from "@/lib/supabase";
@@ -59,9 +60,7 @@ const ASHAProfile = () => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 
@@ -257,9 +256,15 @@ const ASHAProfile = () => {
                             Submitted on {formatDate(survey.created_at)}
                           </p>
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => navigate(`/asha/survey/${survey.id}`)}>
-                          Edit
-                        </Button>
+                        <Button 
+                           size="sm" 
+                           variant="outline" 
+                           onClick={() => navigate(`/asha/survey/${survey.id}`)}
+                           className="flex items-center space-x-1 hover:text-primary border-primary/20 hover:border-primary"
+                         >
+                           <Pencil className="w-3.5 h-3.5" />
+                           <span>Edit</span>
+                         </Button>
                       </div>
 
                       <div className="grid md:grid-cols-2 gap-4 text-sm">
