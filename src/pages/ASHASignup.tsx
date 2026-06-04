@@ -7,6 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Heart, ArrowLeft, User, Lock, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { useEffect } from "react";
+
+type Municipality = {
+  municipality_id: number;
+  municipality_name: string;
+};
 
 const ASHASignup = () => {
   const navigate = useNavigate();
@@ -16,11 +22,46 @@ const ASHASignup = () => {
     name: "",
     email: "",
     role: "asha_worker",
-    municipality: "",
     password: "",
     confirmPassword: "",
+    municipalityId: "",
   });
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingMuni, setIsFetchingMuni] = useState(false);
+
+  useEffect(() => {
+    const getMunicipalities = async () => {
+      setIsFetchingMuni(true);
+      try {
+        const { data, error } = await supabase
+          .from("municipalities")
+          .select("*");
+
+        if (error) throw error;
+        if (data) {
+          const mapped = data.map((m: any) => {
+            const id = m.municipality_id !== undefined ? m.municipality_id : m.id;
+            const name = m.municipality_name !== undefined ? m.municipality_name : m.name;
+            return {
+              municipality_id: Number(id),
+              municipality_name: String(name || ""),
+            };
+          }).sort((a, b) => a.municipality_name.localeCompare(b.municipality_name));
+          setMunicipalities(mapped);
+        }
+      } catch (error: any) {
+        toast({
+          title: "Error fetching municipalities",
+          description: error.message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsFetchingMuni(false);
+      }
+    };
+    getMunicipalities();
+  }, [toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,10 +87,10 @@ const ASHASignup = () => {
       return;
     }
 
-    if (formData.role === "public_user" && !formData.municipality.trim()) {
+    if (formData.role === "public_user" && !formData.municipalityId) {
       toast({
         title: "Missing Municipality",
-        description: "Public users must enter their municipality.",
+        description: "Public users must select their municipality.",
         variant: "destructive",
       });
       setIsLoading(false);
@@ -66,7 +107,9 @@ const ASHASignup = () => {
           data: {
             name: formData.name,
             role: formData.role,
-            municipality: formData.role === "public_user" ? formData.municipality : null,
+            municipality_id: formData.role === "public_user" && formData.municipalityId
+              ? Number(formData.municipalityId)
+              : null,
           },
         },
       });
@@ -85,10 +128,24 @@ const ASHASignup = () => {
             id: userId,
             name: formData.name,
             role: formData.role,
-            municipality: formData.role === "public_user" ? formData.municipality : null,
+            municipality_id: formData.role === "public_user" && formData.municipalityId
+              ? Number(formData.municipalityId)
+              : null,
           }, { onConflict: "id" });
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          console.error("Profile Upsert Error:", profileError);
+          throw new Error(`Profile creation failed: ${profileError.message}`);
+        }
+
+        // Double check it was created
+        const { data: checkProfile } = await supabase
+          .from("profiles")
+          .select("id, municipality_id")
+          .eq("id", userId)
+          .single();
+
+        console.log("Verified Profile in DB:", checkProfile);
       }
 
       // Session is persisted by Supabase; no localStorage needed
@@ -130,7 +187,7 @@ const ASHASignup = () => {
     setFormData((prev) => ({
       ...prev,
       role: e.target.value,
-      municipality: e.target.value === "public_user" ? prev.municipality : "",
+      municipalityId: e.target.value === "public_user" ? prev.municipalityId : "",
     }));
   };
 
@@ -219,19 +276,23 @@ const ASHASignup = () => {
 
               {formData.role === "public_user" && (
                 <div className="space-y-2">
-                  <Label htmlFor="municipality">Municipality</Label>
-                  <div className="relative">
-                    <Input
-                      id="municipality"
-                      name="municipality"
-                      type="text"
-                      placeholder="Enter your municipality"
-                      value={formData.municipality}
-                      onChange={handleChange}
-                      className="pl-4"
-                      required
-                    />
-                  </div>
+                  <Label htmlFor="municipalityId">Municipality</Label>
+                  <select
+                    id="municipalityId"
+                    name="municipalityId"
+                    value={formData.municipalityId}
+                    onChange={(e) => setFormData(prev => ({ ...prev, municipalityId: e.target.value }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    required
+                    disabled={isFetchingMuni}
+                  >
+                    <option value="">Select your municipality</option>
+                    {municipalities.map((muni) => (
+                      <option key={muni.municipality_id} value={muni.municipality_id}>
+                        {muni.municipality_name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

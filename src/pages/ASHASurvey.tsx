@@ -91,9 +91,6 @@ const ASHASurvey = () => {
     },
     avgSymptomDuration: "",
     numberOfWaterBodies: 0,
-    avgPH: 0,
-    avgTurbidity: 0,
-    avgTemperature: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
   const isSubmitting = useRef(false);
@@ -125,14 +122,27 @@ const ASHASurvey = () => {
         navigate('/asha/login');
         return;
       }
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*, municipalities(*)')
+        .eq('id', user.id)
+        .single();
       if (!profile || profile.role !== 'asha_worker') {
         navigate('/asha/login');
         return;
       }
       setCurrentUser({ id: user.id, name: profile.name, role: profile.role });
+      if (!id && profile.municipalities) {
+        const muniName = profile.municipalities.municipality_name !== undefined
+          ? profile.municipalities.municipality_name
+          : profile.municipalities.name;
+        setFormData((prev) => ({
+          ...prev,
+          municipality: muniName || "",
+        }));
+      }
     })();
-  }, [navigate]);
+  }, [navigate, id]);
 
   useEffect(() => {
     if (!id) {
@@ -146,14 +156,18 @@ const ASHASurvey = () => {
       try {
         const { data, error } = await supabase
           .from("municipalities")
-          .select("municipality_id, municipality_name");
+          .select("*");
 
         if (error) throw error;
 
-        const mappedData = (data || []).map((m: any) => ({
-          id: Number(m.municipality_id),
-          name: m.municipality_name || "",
-        }));
+        const mappedData = (data || []).map((m: any) => {
+          const id = m.municipality_id !== undefined ? m.municipality_id : m.id;
+          const name = m.municipality_name !== undefined ? m.municipality_name : m.name;
+          return {
+            id: Number(id),
+            name: String(name || ""),
+          };
+        }).sort((a, b) => a.name.localeCompare(b.name));
 
         setMunicipalities(mappedData);
       } catch (error: any) {

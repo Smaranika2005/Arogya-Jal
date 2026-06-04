@@ -35,14 +35,14 @@ export type SurveyFormData = {
 
 export async function createSurvey(userId: string, form: SurveyFormData) {
   // Look up municipality_id
-  const { data: muniData, error: muniError } = await supabase
+  const { data: muniList, error: muniError } = await supabase
     .from('municipalities')
-    .select('municipality_id')
-    .eq('municipality_name', form.municipality)
-    .single()
+    .select('*')
 
   if (muniError) throw new Error(`Municipality lookup failed: ${muniError.message}`)
-  const municipalityId = muniData.municipality_id
+  const muni = (muniList || []).find((m: any) => (m.municipality_name === form.municipality || m.name === form.municipality))
+  if (!muni) throw new Error(`Municipality "${form.municipality}" not found.`)
+  const municipalityId = muni.municipality_id !== undefined ? muni.municipality_id : muni.id
 
   // 1. Insert parent survey into symptom_survey
   const { data: parentData, error: parentError } = await supabase
@@ -101,14 +101,14 @@ export async function createSurvey(userId: string, form: SurveyFormData) {
 
 export async function updateSurvey(surveyId: string, userId: string, form: SurveyFormData) {
   // Look up municipality_id
-  const { data: muniData, error: muniError } = await supabase
+  const { data: muniList, error: muniError } = await supabase
     .from('municipalities')
-    .select('municipality_id')
-    .eq('municipality_name', form.municipality)
-    .single()
+    .select('*')
 
   if (muniError) throw new Error(`Municipality lookup failed: ${muniError.message}`)
-  const municipalityId = muniData.municipality_id
+  const muni = (muniList || []).find((m: any) => (m.municipality_name === form.municipality || m.name === form.municipality))
+  if (!muni) throw new Error(`Municipality "${form.municipality}" not found.`)
+  const municipalityId = muni.municipality_id !== undefined ? muni.municipality_id : muni.id
 
   // 1. Update symptom_survey
   const { data: parentData, error: parentError } = await supabase

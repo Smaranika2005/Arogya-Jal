@@ -32,13 +32,31 @@ const GovLogin = () => {
       const userId = data.user?.id;
       if (!userId) throw new Error("Authentication failed. Please try again.");
 
-      const { data: profile, error: profileError } = await supabase
+      const userMetadata = data.user?.user_metadata || {};
+
+      let { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("name, role")
         .eq("id", userId)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError || !profile) {
+        const { data: upsertData, error: upsertError } = await supabase
+          .from("profiles")
+          .upsert({
+            id: userId,
+            name: userMetadata.name || data.user.email || "Government Official",
+            role: userMetadata.role || "government",
+          }, { onConflict: "id" })
+          .select()
+          .single();
+
+        if (upsertError) {
+          if (!profile) throw profileError || upsertError;
+        } else {
+          profile = upsertData;
+        }
+      }
 
       if (profile?.role !== "government") {
         await supabase.auth.signOut();

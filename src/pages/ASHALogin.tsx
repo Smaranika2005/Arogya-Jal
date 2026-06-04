@@ -35,15 +35,35 @@ const Login = () => {
           variant: "destructive",
         });
       } else if (data?.user) {
-        const { data: profile } = await supabase
+        const userId = data.user.id;
+        const userMetadata = data.user.user_metadata || {};
+
+        let { data: profileData, error: profileError } = await supabase
           .from("profiles")
           .select("*")
-          .eq("id", data.user.id)
+          .eq("id", userId)
           .single();
+
+        if (profileError || !profileData || !profileData.municipality_id) {
+          const { data: upsertData, error: upsertError } = await supabase
+            .from("profiles")
+            .upsert({
+              id: userId,
+              name: profileData?.name || userMetadata.name || data.user.email || "ASHA Worker",
+              role: profileData?.role || userMetadata.role || "asha_worker",
+              municipality_id: profileData?.municipality_id || userMetadata.municipality_id || null,
+            }, { onConflict: "id" })
+            .select()
+            .single();
+
+          if (!upsertError && upsertData) {
+            profileData = upsertData;
+          }
+        }
 
         toast({
           title: "Welcome back!",
-          description: `Successfully logged in as ${profile?.name || data.user.email}`,
+          description: `Successfully logged in as ${profileData?.name || data.user.email}`,
         });
 
         navigate("/asha/dashboard");

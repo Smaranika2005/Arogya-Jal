@@ -36,37 +36,35 @@ const PublicLogin = () => {
 
       let { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("name, role, municipality")
+        .select("name, role, municipality_id")
         .eq("id", userId)
         .single();
 
-      if (profileError) {
+      if (profileError || !profileData || !profileData.municipality_id) {
         const fallbackRole = userMetadata.role || "public_user";
-        const fallbackMunicipality = userMetadata.municipality || null;
+        const fallbackMunicipalityId = userMetadata.municipality_id || null;
 
-        if (fallbackRole !== "public_user") {
+        if (fallbackRole !== "public_user" && profileError) {
           throw profileError;
         }
 
-        const { error: upsertError } = await supabase
+        const { data: upsertData, error: upsertError } = await supabase
           .from("profiles")
           .upsert({
             id: userId,
-            name: userMetadata.name || data.user.email || "Public User",
-            role: fallbackRole,
-            municipality: fallbackMunicipality,
-          }, { onConflict: "id" });
-
-        if (upsertError) throw upsertError;
-
-        const refetch = await supabase
-          .from("profiles")
-          .select("name, role, municipality")
-          .eq("id", userId)
+            name: profileData?.name || userMetadata.name || data.user.email || "Public User",
+            role: profileData?.role || fallbackRole,
+            municipality_id: profileData?.municipality_id || fallbackMunicipalityId,
+          }, { onConflict: "id" })
+          .select()
           .single();
 
-        profileData = refetch.data;
-        profileError = refetch.error;
+        if (upsertError) {
+          if (!profileData) throw profileError || upsertError;
+        } else {
+          profileData = upsertData;
+          profileError = null;
+        }
       }
 
       const profile = profileData as any;
@@ -78,7 +76,7 @@ const PublicLogin = () => {
         throw new Error("This account is not authorized for Public User Dashboard.");
       }
 
-      if (!profile?.municipality) {
+      if (!profile?.municipality_id) {
         throw new Error("No municipality found for this account. Please update the profile.");
       }
 

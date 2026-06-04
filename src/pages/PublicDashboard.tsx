@@ -34,7 +34,7 @@ const PublicDashboard = () => {
       if (!user) { navigate('/public/login'); return; }
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*, municipalities(id, name)')
+        .select('*, municipalities(*)')
         .eq('id', user.id)
         .single();
 
@@ -48,12 +48,11 @@ const PublicDashboard = () => {
 
       let muniId = profile.municipality_id;
       if (!muniId && profile.municipality) {
-        const { data: muni } = await supabase
+        const { data: muniList } = await supabase
           .from('municipalities')
-          .select('id, name')
-          .eq('name', profile.municipality)
-          .maybeSingle();
-        muniId = muni?.id;
+          .select('*');
+        const muni = (muniList || []).find((m: any) => (m.municipality_name === profile.municipality || m.name === profile.municipality));
+        muniId = muni?.municipality_id ?? muni?.id;
       }
 
       if (!muniId) {
@@ -63,8 +62,8 @@ const PublicDashboard = () => {
       }
 
       setMunicipalityId(muniId);
-      const { data: muniRow } = await supabase.from('municipalities').select('name').eq('id', muniId).single();
-      setMunicipalityName(muniRow?.name ?? 'Your Municipality');
+      const muniName = profile.municipalities?.municipality_name ?? profile.municipalities?.name ?? 'Your Municipality';
+      setMunicipalityName(muniName);
     })();
   }, [navigate, toast]);
 
