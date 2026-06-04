@@ -252,6 +252,8 @@ DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 DROP POLICY IF EXISTS "Government can read all profiles" ON profiles;
 CREATE POLICY "Government can read all profiles" ON profiles FOR SELECT USING (get_user_role(auth.uid()) = 'government');
+DROP POLICY IF EXISTS "Anyone can view ASHA worker profiles" ON profiles;
+CREATE POLICY "Anyone can view ASHA worker profiles" ON profiles FOR SELECT TO authenticated USING (role = 'asha_worker');
 DROP POLICY IF EXISTS "Service role full profiles" ON profiles;
 CREATE POLICY "Service role full profiles" ON profiles FOR ALL TO service_role USING (true) WITH CHECK (true);
 
