@@ -5,6 +5,7 @@ export type WaterBodyAssessment = {
   ph: string
   turbidity: string
   tds: string
+  rank?: number
 }
 
 export type SurveyFormData = {
@@ -77,14 +78,15 @@ export async function createSurvey(userId: string, form: SurveyFormData) {
 
   // 2. Insert child records into waterquality_survey
   if (form.waterBodyAssessments && form.waterBodyAssessments.length > 0) {
-    const childRows = form.waterBodyAssessments.map(item => ({
+    const childRows = form.waterBodyAssessments.map((item, index) => ({
       survey_id: surveyId,
       booth_no: boothNo,
       wid: item.wid,
       ph: parseFloat(item.ph) || 0,
       turbidity: parseFloat(item.turbidity) || 0,
       tds: parseFloat(item.tds) || 0,
-      no_waterbodies: Number(form.numberOfWaterBodies) || 0
+      no_waterbodies: Number(form.numberOfWaterBodies) || 0,
+      rank: item.rank || (index + 1)
     }))
 
     const { error: childError } = await supabase
@@ -146,14 +148,15 @@ export async function updateSurvey(surveyId: string, userId: string, form: Surve
 
   // 3. Insert new child records
   if (form.waterBodyAssessments && form.waterBodyAssessments.length > 0) {
-    const childRows = form.waterBodyAssessments.map(item => ({
+    const childRows = form.waterBodyAssessments.map((item, index) => ({
       survey_id: surveyId,
       booth_no: parentData.booth_no,
       wid: item.wid,
       ph: parseFloat(item.ph) || 0,
       turbidity: parseFloat(item.turbidity) || 0,
       tds: parseFloat(item.tds) || 0,
-      no_waterbodies: Number(form.numberOfWaterBodies) || 0
+      no_waterbodies: Number(form.numberOfWaterBodies) || 0,
+      rank: item.rank || (index + 1)
     }))
 
     const { error: childError } = await supabase
@@ -244,6 +247,7 @@ export async function getMySurveys(userId: string) {
           ph: String(k.ph || ''),
           turbidity: String(k.turbidity || ''),
           tds: String(k.tds || ''),
+          rank: k.rank,
         }))
       }
     }
@@ -297,6 +301,7 @@ export async function getSurveyById(id: string, userId: string) {
       ph: String(item.ph || ''),
       turbidity: String(item.turbidity || ''),
       tds: String(item.tds || ''),
+      rank: item.rank
     }))
   }
 
@@ -481,6 +486,7 @@ export async function getSymptomSurveysForMunicipality(municipalityId: number) {
           ph: String(k.ph || ''),
           turbidity: String(k.turbidity || ''),
           tds: String(k.tds || ''),
+          rank: k.rank
         }))
       }
     }

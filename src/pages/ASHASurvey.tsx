@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, MapPin, Thermometer, Droplets, Plus } from "lucide-react";
+import { ArrowLeft, Save, MapPin, Thermometer, Droplets, Plus, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { createSurvey, getSurveyById, updateSurvey, type SurveyFormData, type WaterBodyAssessment } from "@/services/surveys";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type MunicipalityOption = {
   id: number;
@@ -146,14 +147,14 @@ const ASHASurvey = () => {
         const { data, error } = await supabase
           .from("municipalities")
           .select("municipality_id, municipality_name");
-        
+
         if (error) throw error;
-        
+
         const mappedData = (data || []).map((m: any) => ({
           id: Number(m.municipality_id),
           name: m.municipality_name || "",
         }));
-        
+
         setMunicipalities(mappedData);
       } catch (error: any) {
         toast({ title: "Unable to load municipalities", description: error.message, variant: "destructive" });
@@ -245,7 +246,7 @@ const ASHASurvey = () => {
       });
       return;
     }
-    
+
     if (waterBodyAssessments.length >= limit) {
       setWaterBodiesLimitError(`Cannot add more cards than the specified Number of Water Bodies (${limit}).`);
       toast({
@@ -259,12 +260,16 @@ const ASHASurvey = () => {
     setWaterBodiesLimitError("");
     setWaterBodyAssessments(prev => [
       ...prev,
-      { wid: 0, ph: "", turbidity: "", tds: "" }
+      { wid: 0, ph: "", turbidity: "", tds: "", rank: prev.length + 1 }
     ]);
   };
 
   const removeWaterBodyAssessment = (index: number) => {
-    setWaterBodyAssessments(prev => prev.filter((_, i) => i !== index));
+    setWaterBodyAssessments(prev => {
+      const filtered = prev.filter((_, i) => i !== index);
+      // Re-assign ranks based on new order
+      return filtered.map((item, i) => ({ ...item, rank: i + 1 }));
+    });
     setWaterBodiesLimitError("");
   };
 
@@ -314,10 +319,10 @@ const ASHASurvey = () => {
 
     const numWaterBodies = Number(formData.numberOfWaterBodies);
     if (numWaterBodies < 0 || numWaterBodies > maxWaterBodiesCount) {
-      toast({ 
-        title: "Validation Error", 
-        description: `Number of Water Bodies must be between 0 and ${maxWaterBodiesCount} (total available for this municipality).`, 
-        variant: "destructive" 
+      toast({
+        title: "Validation Error",
+        description: `Number of Water Bodies must be between 0 and ${maxWaterBodiesCount} (total available for this municipality).`,
+        variant: "destructive"
       });
       resetSubmission();
       return;
@@ -341,7 +346,7 @@ const ASHASurvey = () => {
         resetSubmission();
         return;
       }
-      
+
       const phVal = parseFloat(card.ph);
       if (isNaN(phVal) || phVal < 0 || phVal > 14) {
         toast({ title: "Validation Error", description: `pH for Water Body ${i + 1} must be a number between 0 and 14.`, variant: "destructive" });
@@ -457,7 +462,7 @@ const ASHASurvey = () => {
               {/* General Information */}
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold border-b pb-2">General Information</h3>
-                
+
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="surveyDate">Date of Survey</Label>
@@ -470,7 +475,7 @@ const ASHASurvey = () => {
                     />
                     <p className="text-xs text-muted-foreground">Filled automatically by the system.</p>
                   </div>
-                  
+
                   {/* Pincode */}
                   <div className="space-y-2">
                     <Label htmlFor="pincode">Pincode</Label>
@@ -489,7 +494,7 @@ const ASHASurvey = () => {
                       />
                     </div>
                   </div>
-                  
+
                   {/* Municipality */}
                   <div className="space-y-2">
                     <Label htmlFor="municipality">Municipality Name</Label>
@@ -517,7 +522,7 @@ const ASHASurvey = () => {
                       </Select>
                     </div>
                   </div>
-                  
+
                   {/* Ward No */}
                   <div className="space-y-2">
                     <Label htmlFor="wardNo">Ward No.</Label>
@@ -558,49 +563,49 @@ const ASHASurvey = () => {
               </div>
 
               {/* Survey Data */}
-                <div className="space-y-6">
-                    <h3 className="text-lg font-semibold border-b pb-2">Survey Data</h3>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                        <Label htmlFor="totalPeopleSurveyed">Total Number of People Surveyed</Label>
-                      <Input
-                        id="totalPeopleSurveyed"
-                        name="totalPeopleSurveyed"
-                          type="number"
-                          min={0}
-                          placeholder="Enter number of people surveyed"
-                        value={formData.totalPeopleSurveyed}
-                        onChange={handleInputChange}
-                          inputMode="numeric"
-                      />
-                    
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold border-b pb-2">Survey Data</h3>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="totalPeopleSurveyed">Total Number of People Surveyed</Label>
+                    <Input
+                      id="totalPeopleSurveyed"
+                      name="totalPeopleSurveyed"
+                      type="number"
+                      min={0}
+                      placeholder="Enter number of people surveyed"
+                      value={formData.totalPeopleSurveyed}
+                      onChange={handleInputChange}
+                      inputMode="numeric"
+                    />
+
                   </div>
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="symptoms.diarrhoea">Diarrhoea</Label>
-                      <Input id="symptoms.diarrhoea" type="number" min={0} placeholder="Number affected" value={formData.symptoms.diarrhoea} onChange={handleNestedNumberChange('symptoms','diarrhoea')} />
+                    <Input id="symptoms.diarrhoea" type="number" min={0} placeholder="Number affected" value={formData.symptoms.diarrhoea} onChange={handleNestedNumberChange('symptoms', 'diarrhoea')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="symptoms.abdominalPain">Abdominal Pain</Label>
-                      <Input id="symptoms.abdominalPain" type="number" min={0} placeholder="Number affected" value={formData.symptoms.abdominalPain} onChange={handleNestedNumberChange('symptoms','abdominalPain')} />
+                    <Input id="symptoms.abdominalPain" type="number" min={0} placeholder="Number affected" value={formData.symptoms.abdominalPain} onChange={handleNestedNumberChange('symptoms', 'abdominalPain')} />
                   </div>
                   <div className="space-y-2">
-                      <Label htmlFor="symptoms.dehydrationWeakness">Dehydration</Label>
-                      <Input id="symptoms.dehydrationWeakness" type="number" min={0} placeholder="Number affected" value={formData.symptoms.dehydrationWeakness} onChange={handleNestedNumberChange('symptoms','dehydrationWeakness')} />
+                    <Label htmlFor="symptoms.dehydrationWeakness">Dehydration</Label>
+                    <Input id="symptoms.dehydrationWeakness" type="number" min={0} placeholder="Number affected" value={formData.symptoms.dehydrationWeakness} onChange={handleNestedNumberChange('symptoms', 'dehydrationWeakness')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="symptoms.vomiting">Vomiting</Label>
-                      <Input id="symptoms.vomiting" type="number" min={0} placeholder="Number affected" value={formData.symptoms.vomiting} onChange={handleNestedNumberChange('symptoms','vomiting')} />
+                    <Input id="symptoms.vomiting" type="number" min={0} placeholder="Number affected" value={formData.symptoms.vomiting} onChange={handleNestedNumberChange('symptoms', 'vomiting')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="symptoms.fever">Fever</Label>
-                      <Input id="symptoms.fever" type="number" min={0} placeholder="Number affected" value={formData.symptoms.fever} onChange={handleNestedNumberChange('symptoms','fever')} />
+                    <Input id="symptoms.fever" type="number" min={0} placeholder="Number affected" value={formData.symptoms.fever} onChange={handleNestedNumberChange('symptoms', 'fever')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="symptoms.skinRashes">Skin Rashes</Label>
-                      <Input id="symptoms.skinRashes" type="number" min={0} placeholder="Number affected" value={formData.symptoms.skinRashes} onChange={handleNestedNumberChange('symptoms','skinRashes')} />
+                    <Input id="symptoms.skinRashes" type="number" min={0} placeholder="Number affected" value={formData.symptoms.skinRashes} onChange={handleNestedNumberChange('symptoms', 'skinRashes')} />
                   </div>
                 </div>
               </div>
@@ -611,15 +616,15 @@ const ASHASurvey = () => {
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="ageGroups.children0to12">Children (0–12 years)</Label>
-                    <Input id="ageGroups.children0to12" type="number" min={0} value={formData.ageGroups.children0to12} onChange={handleNestedNumberChange('ageGroups','children0to12')} />
+                    <Input id="ageGroups.children0to12" type="number" min={0} value={formData.ageGroups.children0to12} onChange={handleNestedNumberChange('ageGroups', 'children0to12')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ageGroups.adults13to60">Adults (13–60 years)</Label>
-                    <Input id="ageGroups.adults13to60" type="number" min={0} value={formData.ageGroups.adults13to60} onChange={handleNestedNumberChange('ageGroups','adults13to60')} />
+                    <Input id="ageGroups.adults13to60" type="number" min={0} value={formData.ageGroups.adults13to60} onChange={handleNestedNumberChange('ageGroups', 'adults13to60')} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="ageGroups.elderly60plus">Citizens / Elderly (60+ years)</Label>
-                    <Input id="ageGroups.elderly60plus" type="number" min={0} value={formData.ageGroups.elderly60plus} onChange={handleNestedNumberChange('ageGroups','elderly60plus')} />
+                    <Input id="ageGroups.elderly60plus" type="number" min={0} value={formData.ageGroups.elderly60plus} onChange={handleNestedNumberChange('ageGroups', 'elderly60plus')} />
                   </div>
                 </div>
               </div>
@@ -627,7 +632,7 @@ const ASHASurvey = () => {
               {/* Additional Information */}
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold border-b pb-2">Additional Information</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="avgSymptomDuration">Average Duration of Symptoms</Label>
                   <Input
@@ -645,7 +650,15 @@ const ASHASurvey = () => {
               {/* Water Quality Assessment */}
               <div className="space-y-6">
                 <h3 className="text-lg font-semibold border-b pb-2">Water Quality Assessment</h3>
-                
+
+                <Alert className="bg-blue-50/50 border-blue-200">
+                  <Info className="h-4 w-4 text-blue-500" />
+                  <AlertTitle className="text-blue-700 font-semibold">Priority Order Required</AlertTitle>
+                  <AlertDescription className="text-blue-600">
+                    Please enter water bodies in order of significance—starting with the <strong>most significant</strong> one first, followed by others in decreasing order.
+                  </AlertDescription>
+                </Alert>
+
                 <div className="grid md:grid-cols-2 gap-6 items-end">
                   <div className="space-y-2">
                     <Label htmlFor="numberOfWaterBodies">Number of Water Bodies</Label>
@@ -702,12 +715,16 @@ const ASHASurvey = () => {
                         <Card key={index} className="border border-input overflow-hidden shadow-sm">
                           {/* Card Header (Collapsible toggle + Title + Remove button) */}
                           <div className="flex items-center justify-between bg-muted/30 px-4 py-3 border-b">
-                            <div 
+                            <div
                               className="flex items-center space-x-2 cursor-pointer flex-grow"
                               onClick={() => toggleCollapse(index)}
                             >
                               <span className="font-semibold text-sm text-primary">
-                                Water Body {index + 1} {selectedBody ? `— ${selectedBody.wname}` : ""}
+                                {index === 0 ? "1st Water Body (Most Significant)" :
+                                  index === 1 ? "2nd Water Body" :
+                                    index === 2 ? "3rd Water Body" :
+                                      `${index + 1}th Water Body`}
+                                {selectedBody ? ` — ${selectedBody.wname}` : ""}
                               </span>
                               <span className="text-xs text-muted-foreground">
                                 {isCollapsed ? "(Click to expand)" : "(Click to collapse)"}
