@@ -102,6 +102,7 @@ const ASHASurvey = () => {
   const [collapsedCards, setCollapsedCards] = useState<Record<number, boolean>>({});
   const [waterBodiesLimitError, setWaterBodiesLimitError] = useState<string>("");
   const [selectedMunicipalityId, setSelectedMunicipalityId] = useState<number | null>(null);
+  const [phLoadingMap, setPhLoadingMap] = useState<Record<number, boolean>>({});
 
   // Sync selected municipality ID based on name or when municipalities list is loaded
   useEffect(() => {
@@ -295,6 +296,86 @@ const ASHASurvey = () => {
     });
   };
 
+  const handleWaterBodyChange = async (index: number, wid: number) => {
+    setWaterBodyAssessments(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], wid, ph: "" };
+      return next;
+    });
+
+    if (!wid) return;
+
+    setPhLoadingMap(prev => ({ ...prev, [index]: true }));
+
+    try {
+      const { data: sensorData, error: sensorError } = await supabase
+        .from('sensors')
+        .select('sensor_id')
+        .eq('wid', wid)
+        .maybeSingle();
+
+      if (sensorError) throw sensorError;
+
+      if (!sensorData?.sensor_id) {
+        setWaterBodyAssessments(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], ph: "7.0" };
+          return next;
+        });
+        toast({
+          title: "No sensor found",
+          description: "No pH sensor is linked to this water body. Defaulting pH to 7.0.",
+        });
+        return;
+      }
+
+      const { data: readingsData, error: readingsError } = await supabase
+        .from('ph_readings')
+        .select('ph_value')
+        .eq('sensor_id', sensorData.sensor_id);
+
+      if (readingsError) throw readingsError;
+
+      if (!readingsData || readingsData.length === 0) {
+        setWaterBodyAssessments(prev => {
+          const next = [...prev];
+          next[index] = { ...next[index], ph: "7.0" };
+          return next;
+        });
+        toast({
+          title: "No sensor readings",
+          description: "No pH readings were found for the sensor. Defaulting pH to 7.0.",
+        });
+        return;
+      }
+
+      const sum = readingsData.reduce((acc, r) => acc + Number(r.ph_value), 0);
+      const mean = sum / readingsData.length;
+      const meanPhStr = mean.toFixed(2);
+
+      setWaterBodyAssessments(prev => {
+        const next = [...prev];
+        next[index] = { ...next[index], ph: meanPhStr };
+        return next;
+      });
+
+    } catch (err: any) {
+      console.error("Error fetching pH:", err);
+      toast({
+        title: "Error fetching pH data",
+        description: err.message || "Failed to load pH from sensor database. Defaulting to 7.0.",
+        variant: "destructive",
+      });
+      setWaterBodyAssessments(prev => {
+        const next = [...prev];
+        next[index] = { ...next[index], ph: "7.0" };
+        return next;
+      });
+    } finally {
+      setPhLoadingMap(prev => ({ ...prev, [index]: false }));
+    }
+  };
+
   const toggleCollapse = (index: number) => {
     setCollapsedCards(prev => ({ ...prev, [index]: !prev[index] }));
   };
@@ -316,6 +397,18 @@ const ASHASurvey = () => {
       setIsLoading(false);
       isSubmitting.current = false;
     };
+
+    // Prevent submission if pH values are currently fetching
+    const isPhLoading = Object.values(phLoadingMap).some(Boolean);
+    if (isPhLoading) {
+      toast({
+        title: "Please wait",
+        description: "Sensor pH data is still loading. Please try again in a moment.",
+        variant: "destructive"
+      });
+      resetSubmission();
+      return;
+    }
 
     // Basic validation
     if (!formData.pincode || !formData.municipality || !formData.wardNo || !formData.boothNo) {
@@ -764,7 +857,7 @@ const ASHASurvey = () => {
                                   <Label htmlFor={`water-body-select-${index}`}>Select Water Body</Label>
                                   <Select
                                     value={assessment.wid ? String(assessment.wid) : ""}
-                                    onValueChange={(val) => handleCardFieldChange(index, 'wid', Number(val))}
+                                    onValueChange={(val) => handleWaterBodyChange(index, Number(val))}
                                     required
                                   >
                                     <SelectTrigger id={`water-body-select-${index}`}>
@@ -785,13 +878,11 @@ const ASHASurvey = () => {
                                   <Label htmlFor={`ph-input-${index}`}>pH</Label>
                                   <Input
                                     id={`ph-input-${index}`}
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    max="14"
-                                    placeholder="pH (0-14)"
-                                    value={assessment.ph}
-                                    onChange={(e) => handleCardFieldChange(index, 'ph', e.target.value)}
+                                    type="text"
+                                    placeholder={phLoadingMap[index] ? "Fetching pH..." : "pH (0-14)"}
+                                    value={phLoadingMap[index] ? "Fetching pH..." : (assessment.ph || "")}
+                                    readOnly
+                                    className="bg-muted cursor-not-allowed text-primary font-semibold"
                                     required
                                   />
                                 </div>
